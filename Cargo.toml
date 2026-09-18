@@ -1,0 +1,13 @@
+[package]
+name = "agent-logistics"
+version = "0.1.0"
+edition = "2021"
+description = "Deterministic warehouse simulation and agent tools (team B)"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[bin]]
+name = "logistics"
+path = "src/main.rs"

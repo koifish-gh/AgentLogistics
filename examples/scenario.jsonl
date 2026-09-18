@@ -1,0 +1,10 @@
+{"op":"set_strategy","strategy":"manual"}
+{"op":"add_order","pickup":{"x":1,"y":0},"dropoff":{"x":11,"y":0},"priority":9}
+{"op":"assign_order","robot_id":1,"order_id":1}
+{"op":"step","ticks":3}
+{"op":"inject_fault","robot_id":1}
+{"op":"assign_order","robot_id":2,"order_id":1}
+{"op":"step","ticks":20}
+{"op":"repair_robot","robot_id":1}
+{"op":"get_events","after":0}
+{"op":"get_state"}

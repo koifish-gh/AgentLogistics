@@ -1,0 +1,361 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentLogistics command v1",
+  "$defs": {
+    "position": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "y": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false
+    },
+    "warehouse": {
+      "type": "object",
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "obstacles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/position"
+          },
+          "uniqueItems": true
+        },
+        "blocked": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/position"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "obstacles"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "get_state"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "get_kpis"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "dispatch"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "get_events"
+        },
+        "after": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "reset"
+        },
+        "map": {
+          "$ref": "#/$defs/warehouse"
+        },
+        "robots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/position"
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "maxItems": 64
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        }
+      },
+      "required": [
+        "op",
+        "map",
+        "robots",
+        "seed"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "add_order"
+        },
+        "pickup": {
+          "$ref": "#/$defs/position"
+        },
+        "dropoff": {
+          "$ref": "#/$defs/position"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9
+        }
+      },
+      "required": [
+        "op",
+        "pickup",
+        "dropoff"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "generate_orders"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        }
+      },
+      "required": [
+        "op",
+        "count"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "set_strategy"
+        },
+        "strategy": {
+          "enum": [
+            "nearest",
+            "balanced",
+            "manual"
+          ]
+        }
+      },
+      "required": [
+        "op",
+        "strategy"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "assign_order"
+        },
+        "robot_id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "order_id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "op",
+        "robot_id",
+        "order_id"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "plan_path"
+        },
+        "start": {
+          "$ref": "#/$defs/position"
+        },
+        "goal": {
+          "$ref": "#/$defs/position"
+        },
+        "avoid": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/position"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "op",
+        "start",
+        "goal"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "replan"
+        },
+        "robot_id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "avoid": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/position"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "op",
+        "robot_id"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "set_blocked"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
+        },
+        "blocked": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "op",
+        "position",
+        "blocked"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "inject_fault"
+        },
+        "robot_id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "op",
+        "robot_id"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "repair_robot"
+        },
+        "robot_id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "op",
+        "robot_id"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "step"
+        },
+        "ticks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "op",
+        "ticks"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}
