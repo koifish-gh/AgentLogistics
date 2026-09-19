@@ -4,6 +4,10 @@
 本目录包含 **Rust 仿真核心、A*、调度基线、故障与重规划、Agent 工具接口、前端接入桥和测试**。
 LLM 决策逻辑、正式前端页面和 PPT 分别由 A、C、D 同学负责。
 
+## A 同学：Agent 大脑
+
+Agent 大脑位于 `agent/`，包含 LLM Function Calling、Prompt、AgentLoop、工具调用、事件记忆和安全降级。运行方式与 C 同学前端接口见 `agent/README.md`。
+
 ## 快速运行（Windows / PowerShell）
 
 请从 `D:\sw_huibian` 运行。当前环境已经准备好本目录内的 Rust 工具链、依赖缓存及 debug 可执行程序。
