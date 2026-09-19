@@ -1,0 +1,13 @@
+{
+  "name": "agent-logistics-brain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "LLM function-calling agent brain for AgentLogistics",
+  "scripts": {
+    "agent": "node cli.mjs",
+    "server": "node server.mjs",
+    "demo": "node cli.mjs demo --mode rule",
+    "smoke": "node smoke.mjs"
+  }
+}
