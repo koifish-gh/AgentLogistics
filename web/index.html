@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AgentLogistics · 智能仓储机器人调度</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b0f14'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%232cc6b0'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="logo">A</span>
+        <div>
+          <h1>AgentLogistics</h1>
+          <p>智能仓储机器人调度 · 可视化控制台</p>
+        </div>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div class="sidebar-foot" id="sidebarFoot">正在连接仿真服务…</div>
+    </aside>
+
+    <header class="header">
+      <div class="header-title">
+        <h2 id="pageTitle">总览</h2>
+        <small id="pageSub">实时监控仓库运行状态</small>
+      </div>
+      <div class="header-center" id="headerStats"></div>
+      <div class="header-right" id="headerControls"></div>
+    </header>
+
+    <main class="main">
+      <div class="page" id="page"></div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

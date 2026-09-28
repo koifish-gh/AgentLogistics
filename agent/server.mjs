@@ -1,9 +1,39 @@
 #!/usr/bin/env node
+import fs from 'node:fs';
 import http from 'node:http';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { CONFIG } from './config.mjs';
 import { AgentBrain } from './loop.mjs';
 import { SIM_TOOLS } from './tools.mjs';
+
+const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
+const mime = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+};
+
+function serveWeb(req, res, url) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  let rel = decodeURIComponent(url.pathname);
+  if (rel === '/') rel = '/index.html';
+  if (rel.includes('\0') || rel.includes('..')) return false;
+  const file = path.resolve(webRoot, '.' + rel);
+  if (file !== webRoot && !file.startsWith(webRoot + path.sep)) return false;
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return false;
+  res.writeHead(200, {
+    'Content-Type': mime[path.extname(file).toLowerCase()] || 'application/octet-stream',
+    'Cache-Control': 'no-store',
+  });
+  if (req.method === 'HEAD') {
+    res.end();
+    return true;
+  }
+  fs.createReadStream(file).pipe(res);
+  return true;
+}
 
 function send(res, status, value) {
   res.writeHead(status, {
@@ -176,6 +206,8 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, result);
     }
 
+    if (serveWeb(req, res, url)) return;
+
     return send(res, 404, { error: 'Unknown agent endpoint' });
   } catch (error) {
     if (!res.headersSent) send(res, 400, { error: error.message });
@@ -185,7 +217,8 @@ const server = http.createServer(async (req, res) => {
 
 server.requestTimeout = 30000;
 server.listen(CONFIG.port, '127.0.0.1', () => {
-  console.log(`Agent brain API: http://127.0.0.1:${CONFIG.port}`);
+  console.log(`Agent UI:  http://127.0.0.1:${CONFIG.port}/`);
+  console.log(`Agent API: http://127.0.0.1:${CONFIG.port}`);
   console.log(`Mode: ${CONFIG.mode}`);
 });
 
