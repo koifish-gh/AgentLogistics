@@ -108,6 +108,11 @@ export const SIM_TOOLS = [
 
 const names = new Set(SIM_TOOLS.map((entry) => entry.function.name));
 
+export function getTools(toolNames) {
+  const requested = new Set(toolNames);
+  return SIM_TOOLS.filter((entry) => requested.has(entry.function.name));
+}
+
 export async function executeTool(client, name, args = {}) {
   if (!names.has(name)) {
     return { ok: false, error: `Unknown tool: ${name}` };

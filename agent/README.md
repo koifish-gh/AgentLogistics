@@ -67,6 +67,16 @@ node server.mjs
 
 `llm` 模式使用 OpenAI-compatible Function Calling。模型通过 `get_state`、`assign_order`、`replan`、`repair_robot`、`step` 等工具自主决策。若模型未调用 `step`，AgentLoop 会安全地补一次 `step`，保证演示不会卡住。
 
+## 多 Agent 协作
+
+`llm` 模式下默认使用多 Agent 结构，由同一个 LLM API 驱动：
+
+- 观察诊断 Agent：输出当前状态、风险和优先问题。
+- 路径拥塞 Agent：负责 `plan_path`、`replan`、`set_blocked`。
+- 调度恢复 Agent：负责 `assign_order`、`repair_robot` 和推进 `step`。
+
+多个 Agent 不需要多个 API key；它们共享同一个智谱密钥，通过不同 system prompt 和工具权限区分角色。若想退回单 Agent，可设置 `AGENT_ARCHITECTURE=single`。
+
 ## 环境变量
 
 参考同目录 `.env.example`。常用项：
@@ -74,5 +84,5 @@ node server.mjs
 - `AGENT_MODE`：`rule` 或 `llm`。
 - `OPENAI_API_KEY`：LLM API key。
 - `OPENAI_BASE_URL`：默认 OpenAI v1 地址，可换成兼容服务。
-- `OPENAI_MODEL`：默认 `gpt-4o-mini`。
+- `OPENAI_MODEL`：默认 `glm-4-air`，可换 `glm-4-plus` 等。
 - `AGENT_EXPLAIN`：设为 `true` 时每轮追加中文解释，方便 C 同学展示“Agent 为什么这么做”。

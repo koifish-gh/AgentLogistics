@@ -1,7 +1,24 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFileSync, existsSync } from 'node:fs';
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+const envFile = resolve(here, '.env');
+if (existsSync(envFile)) {
+  const text = readFileSync(envFile, 'utf8');
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const index = line.indexOf('=');
+    if (index <= 0) continue;
+    const key = line.slice(0, index).trim();
+    const value = line.slice(index + 1).trim();
+    if (key && process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+}
 
 export const AGENT_DIR = here;
 export const ROOT_DIR = resolve(here, '..');
@@ -27,9 +44,10 @@ function asInt(value, fallback) {
 
 export const CONFIG = {
   mode: process.env.AGENT_MODE || (process.env.OPENAI_API_KEY ? 'llm' : 'rule'),
+  architecture: process.env.AGENT_ARCHITECTURE || 'multi',
   apiKey: process.env.OPENAI_API_KEY || '',
-  baseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-  model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+  baseUrl: process.env.OPENAI_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4',
+  model: process.env.OPENAI_MODEL || 'glm-4-air',
   temperature: Number(process.env.OPENAI_TEMPERATURE ?? 0.2),
   maxToolCalls: asInt(process.env.AGENT_MAX_TOOL_CALLS, 12),
   ticksPerTurn: asInt(process.env.AGENT_TICKS_PER_TURN, 1),

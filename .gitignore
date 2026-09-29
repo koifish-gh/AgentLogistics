@@ -2,3 +2,5 @@
 /.tools/
 /output/
 __pycache__/
+
+.env

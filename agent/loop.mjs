@@ -2,12 +2,13 @@ import { CONFIG } from './config.mjs';
 import { LLMClient } from './llm.mjs';
 import { RulePolicy } from './policy.mjs';
 import { SimulationClient } from './sim-client.mjs';
-import { SIM_TOOLS, executeTool } from './tools.mjs';
+import { SIM_TOOLS, executeTool, getTools } from './tools.mjs';
 import {
   buildSystemPrompt,
   buildUserMessage,
   collectObservation,
 } from './observation.mjs';
+import { MULTI_AGENT_DEFS } from './agents.mjs';
 
 const DEFAULT_MAP = {
   width: 12,
@@ -28,6 +29,7 @@ export class AgentBrain {
   constructor(options = {}) {
     this.client = options.client || new SimulationClient(options.sim || {});
     this.mode = options.mode || CONFIG.mode;
+    this.architecture = options.architecture ?? CONFIG.architecture;
     this.ticksPerTurn = options.ticksPerTurn ?? CONFIG.ticksPerTurn;
     this.maxToolCalls = options.maxToolCalls ?? CONFIG.maxToolCalls;
     this.maxTurns = options.maxTurns ?? CONFIG.maxTurns;
@@ -75,7 +77,9 @@ export class AgentBrain {
     const before = await this.observe();
     const turnTrace =
       this.mode === 'llm'
-        ? await this.runLlmTurn(before, options)
+        ? this.architecture === 'multi'
+          ? await this.runMultiLlmTurn(before, options)
+          : await this.runLlmTurn(before, options)
         : await this.policy.decide(this.client, before.world);
 
     const after = await this.observe();
@@ -174,6 +178,124 @@ export class AgentBrain {
     }
 
     return turnTrace;
+  }
+
+  async runAgent(definition, observation, extraContext = '') {
+    const tools = getTools(definition.tools);
+    const messages = [
+      { role: 'system', content: definition.system },
+      {
+        role: 'user',
+        content: [buildUserMessage(observation), extraContext]
+          .filter(Boolean)
+          .join('\n\n'),
+      },
+    ];
+    const trace = [];
+    let report = '';
+    let stepCalled = false;
+
+    for (let i = 0; i < this.maxToolCalls; i += 1) {
+      let message;
+      try {
+        message = await this.llm.chat({
+          messages,
+          tools,
+          toolChoice: tools.length ? 'auto' : undefined,
+        });
+      } catch (error) {
+        trace.push({ role: 'error', error: error.message });
+        break;
+      }
+
+      const toolCalls = message.tool_calls || [];
+      if (message.content) report = message.content;
+      messages.push({
+        role: 'assistant',
+        content: message.content || null,
+        tool_calls: toolCalls.length ? toolCalls : undefined,
+      });
+
+      if (toolCalls.length === 0) {
+        trace.push({ role: 'assistant', content: message.content || '' });
+        break;
+      }
+
+      for (const call of toolCalls) {
+        let args = {};
+        try {
+          args = call.function.arguments
+            ? JSON.parse(call.function.arguments)
+            : {};
+        } catch {
+          args = { _parse_error: call.function.arguments };
+        }
+
+        const result = await executeTool(this.client, call.function.name, args);
+        if (call.function.name === 'step') stepCalled = true;
+        messages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: JSON.stringify(result),
+        });
+        trace.push({
+          role: 'tool',
+          name: call.function.name,
+          arguments: args,
+          result,
+        });
+      }
+    }
+
+    return {
+      id: definition.id,
+      name: definition.name,
+      report,
+      trace,
+      stepCalled,
+    };
+  }
+
+  async runMultiLlmTurn(before, options = {}) {
+    const observer = await this.runAgent(MULTI_AGENT_DEFS[0], before);
+
+    const router = await this.runAgent(
+      MULTI_AGENT_DEFS[1],
+      before,
+      `观察诊断 Agent 报告：\n${observer.report}`,
+    );
+
+    const afterRouter = await this.observe();
+    const routerActions = router.trace
+      .filter((item) => item.role === 'tool')
+      .map((item) => `${item.name}(${JSON.stringify(item.arguments)})`)
+      .join('; ');
+
+    const dispatcher = await this.runAgent(
+      MULTI_AGENT_DEFS[2],
+      afterRouter,
+      `观察诊断 Agent 报告：\n${observer.report}\n\n路径 Agent 已执行动作：\n${
+        routerActions || '无'
+      }`,
+    );
+
+    if (!dispatcher.stepCalled) {
+      const result = await executeTool(this.client, 'step', {
+        ticks: options.ticks ?? this.ticksPerTurn,
+      });
+      dispatcher.trace.push({
+        role: 'tool',
+        name: 'step',
+        arguments: { ticks: options.ticks ?? this.ticksPerTurn },
+        result,
+      });
+    }
+
+    return [
+      { agent: observer.id, name: observer.name, report: observer.report, actions: observer.trace },
+      { agent: router.id, name: router.name, report: router.report, actions: router.trace },
+      { agent: dispatcher.id, name: dispatcher.name, report: dispatcher.report, actions: dispatcher.trace },
+    ];
   }
 
   async explainTurn(turn) {
