@@ -1,4 +1,5 @@
 // Optional A/C integration bridge: Node.js built-ins only, one persistent Rust world.
+import fs from 'node:fs';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -6,6 +7,31 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const webRoot = path.join(root, 'web');
+const mime = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+};
+function serveWeb(req, res, url) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  let rel = decodeURIComponent(url.pathname);
+  if (rel === '/') rel = '/index.html';
+  if (rel.includes('\0') || rel.includes('..')) return false;
+  const file = path.resolve(webRoot, '.' + rel);
+  if (file !== webRoot && !file.startsWith(webRoot + path.sep)) return false;
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return false;
+  res.writeHead(200, {
+    'Content-Type': mime[path.extname(file).toLowerCase()] || 'application/octet-stream',
+    'Cache-Control': 'no-store',
+  });
+  if (req.method === 'HEAD') { res.end(); return true; }
+  fs.createReadStream(file).pipe(res);
+  return true;
+}
 const binary = path.join(root, 'target', 'debug', process.platform === 'win32' ? 'logistics.exe' : 'logistics');
 const child = spawn(binary, [], { cwd: root, stdio: ['pipe', 'pipe', 'inherit'], windowsHide: true });
 const queue = [];
@@ -96,7 +122,8 @@ export const server = http.createServer(async (req, res) => {
         chunks.push(chunk);
       }
       data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    } else return send(res, 404, { error: 'Use /api/state, /api/kpis, /api/events, /api/stream or POST /api/command' });
+    } else if (serveWeb(req, res, url)) return;
+    else return send(res, 404, { error: 'Use /api/state, /api/kpis, /api/events, /api/stream or POST /api/command' });
     await serialized(async () => {
       const result = await command(data);
       send(res, result.ok ? 200 : 400, result);
@@ -112,7 +139,11 @@ export const server = http.createServer(async (req, res) => {
 });
 server.requestTimeout = 30000;
 server.on('error', error => { console.error(error.message); child.kill(); process.exitCode = 1; });
-server.listen(Number(process.env.PORT || 8787), '127.0.0.1', () => console.log(`Simulation API: http://127.0.0.1:${server.address().port}/api/state`));
+server.listen(Number(process.env.PORT || 8787), '127.0.0.1', () => {
+  const port = server.address().port;
+  console.log(`Warehouse UI:     http://127.0.0.1:${port}/`);
+  console.log(`Simulation API:   http://127.0.0.1:${port}/api/state`);
+});
 export function shutdown() {
   for (const res of streams) res.end();
   child.kill();
