@@ -283,6 +283,48 @@ fn seeded_replay_reproduces_entire_state() {
 }
 
 #[test]
+fn restore_roundtrip_continues_orders_and_rng() {
+    let mut sim = Simulation::demo(7);
+    sim.generate_orders(4).unwrap();
+    sim.step(6).unwrap();
+    let saved = serde_json::to_value(&sim).unwrap();
+    let loaded: Simulation = serde_json::from_value(saved.clone()).unwrap();
+    let line = serde_json::to_string(&Command::Restore {
+        world: saved.clone(),
+    })
+    .unwrap();
+    let command: Command = serde_json::from_str(&line).unwrap();
+    let mut restored = Simulation::demo(1);
+    assert!(execute(&mut restored, &command).is_ok());
+    assert_eq!(restored.tick, sim.tick);
+    assert_eq!(restored.orders, sim.orders);
+    assert_eq!(restored.robots, sim.robots);
+    let mut continued = sim.clone();
+    assert_eq!(
+        restored.generate_orders(2).unwrap(),
+        continued.generate_orders(2).unwrap()
+    );
+    restored.step(3).unwrap();
+    continued.step(3).unwrap();
+    assert_eq!(
+        serde_json::to_value(&restored).unwrap(),
+        serde_json::to_value(&continued).unwrap()
+    );
+
+    let mut broken = loaded;
+    broken.robots.get_mut(&1).unwrap().id = 9;
+    let before = serde_json::to_value(&sim).unwrap();
+    assert!(execute(
+        &mut sim,
+        &Command::Restore {
+            world: serde_json::to_value(&broken).unwrap(),
+        },
+    )
+    .is_err());
+    assert_eq!(before, serde_json::to_value(&sim).unwrap());
+}
+
+#[test]
 fn stress_world_invariants_with_faults_and_traffic() {
     for seed in 0..8 {
         let mut sim = Simulation::demo(seed);

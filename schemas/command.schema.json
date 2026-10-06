@@ -356,6 +356,22 @@
         "ticks"
       ],
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "const": "restore"
+        },
+        "world": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "op",
+        "world"
+      ],
+      "additionalProperties": false
     }
   ]
 }

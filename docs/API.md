@@ -27,6 +27,7 @@ stderr 用于启动错误。每个进程独立持有一个世界；不要每次�
 | get_kpis | 无 | 指标对象 |
 | get_events | after（默认 0） | `sequence > after` 的事件数组 |
 | reset | map, robots, seed | `{reset:true}`；替换世界 |
+| restore | world（`get_state` 返回的完整世界） | `{restored,tick}`；校验后替换当前世界，不推进时间 |
 | add_order | pickup, dropoff, priority（默认 0） | `{order_id}` |
 | generate_orders | count（0–1000） | `{order_ids}`；固定种子生成同连通分量内的端点 |
 | set_strategy | strategy | `{strategy}`；nearest / balanced / manual |

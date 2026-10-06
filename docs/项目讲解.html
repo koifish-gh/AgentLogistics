@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AgentLogistics · 项目讲解</title>
+  <style>
+    :root {
+      --ink: #172b4d;
+      --muted: #526174;
+      --line: #d5dee6;
+      --paper: #f4f7f6;
+      --card: #ffffff;
+      --teal: #0f766e;
+      --teal-soft: #e7f4f2;
+      --red: #b42318;
+      --red-soft: #fdecec;
+      --amber: #8a5a00;
+      --amber-soft: #fbf3df;
+      --blue: #1d4e89;
+      --blue-soft: #e8f1fb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 16.5px;
+      line-height: 1.75;
+    }
+    main { max-width: 1040px; margin: 0 auto; padding: 42px 28px 80px; }
+    .kicker { margin: 0 0 8px; color: var(--teal); font-size: 13px; letter-spacing: 0.12em; }
+    h1 { margin: 0 0 14px; font-size: 34px; line-height: 1.25; font-weight: 650; }
+    h2 { margin: 56px 0 8px; font-size: 24px; line-height: 1.35; }
+    h3 { margin: 0 0 8px; font-size: 17px; }
+    .lead { margin: 0; max-width: 48em; font-size: 18px; }
+    .section-note { margin: 0 0 16px; color: var(--muted); }
+    p { margin: 0 0 12px; }
+    .toc { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 28px; }
+    .toc a {
+      display: block;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      color: inherit;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .toc b { display: block; color: var(--teal); font-size: 12px; font-weight: 650; }
+    .grid-2 { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 16px; align-items: start; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .grid-2eq { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .box {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px 18px;
+    }
+    .box.teal { background: var(--teal-soft); border-color: #b7ddd7; }
+    .box.red { background: var(--red-soft); border-color: #f3c7c7; }
+    .box.amber { background: var(--amber-soft); border-color: #ead7a4; }
+    .box.blue { background: var(--blue-soft); border-color: #c9dbf0; }
+    .tag { display: inline-block; margin-bottom: 6px; color: var(--teal); font-size: 12px; letter-spacing: 0.04em; }
+    svg.figure { width: 100%; height: auto; display: block; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+    .caption { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+    .states { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .state {
+      border: 1px solid var(--line);
+      background: var(--card);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 14px;
+    }
+    .state.now { background: var(--teal); color: #fff; border-color: var(--teal); }
+    .state.bad { background: var(--red); color: #fff; border-color: var(--red); }
+    .arrow { color: var(--teal); font-size: 18px; }
+    ol.pipeline { margin: 0; padding: 0; list-style: none; display: grid; gap: 0; }
+    ol.pipeline li { position: relative; padding: 0 0 16px 34px; }
+    ol.pipeline li::before {
+      content: "";
+      position: absolute;
+      left: 10px;
+      top: 12px;
+      bottom: 0;
+      width: 2px;
+      background: #c5ddd9;
+    }
+    ol.pipeline li:last-child::before { display: none; }
+    ol.pipeline .n {
+      position: absolute;
+      left: 0;
+      top: 3px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--teal);
+      color: #fff;
+      font-size: 12px;
+      line-height: 22px;
+      text-align: center;
+    }
+    table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 15px; }
+    th { background: #eef4f3; font-weight: 650; }
+    tr:last-child td { border-bottom: 0; }
+    .formula {
+      margin: 0;
+      padding: 14px 16px;
+      background: var(--ink);
+      color: #f4f7f6;
+      border-radius: 12px;
+      font-size: 18px;
+      letter-spacing: 0.02em;
+    }
+    .formula small { display: block; margin-top: 6px; color: #b7c4d4; font-size: 13px; }
+    .shell {
+      display: grid;
+      grid-template-columns: 210px 1fr;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--card);
+    }
+    .side { background: #10241f; color: #d7ebe7; padding: 16px; }
+    .side b { display: block; color: #fff; font-size: 16px; }
+    .side small { color: #9ec7c0; }
+    .nav-mini { margin: 14px 0 0; padding: 0; list-style: none; font-size: 14px; }
+    .nav-mini li { padding: 4px 0; }
+    .nav-mini .on { color: #fff; }
+    .topbar { display: flex; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 14px; }
+    .stage { padding: 16px; color: var(--muted); }
+    .pages { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+    ul.clean { margin: 8px 0 0; padding-left: 18px; }
+    ul.clean li { margin: 3px 0; }
+    .story { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: stretch; }
+    .story .mid { align-self: center; color: var(--teal); font-size: 22px; }
+    footer { margin-top: 40px; color: var(--muted); font-size: 14px; }
+    @media (max-width: 860px) {
+      .toc, .grid-2, .grid-3, .grid-2eq, .pages, .shell, .story { grid-template-columns: 1fr; }
+      .story .mid { transform: rotate(90deg); justify-self: center; }
+      h1 { font-size: 28px; }
+    }
+    @media print {
+      body { background: #fff; }
+      main { max-width: none; }
+      .box, .shell, svg.figure { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="kicker">AGENTLOGISTICS</p>
+    <h1>智能仓储机器人调度系统</h1>
+    <p class="lead">本系统在一张可复现的网格仓库中调度多台机器人完成取货与送达。仿真内核负责路径、碰撞与订单状态；常规分配由确定性规则完成。仅当出现故障、通道对向或订单突发时，系统才调用大模型，并把该次决策的原因保留在界面上。</p>
+    <nav class="toc" aria-label="讲解目录">
+      <a href="#problem"><b>01</b>问题与目标</a>
+      <a href="#warehouse"><b>02</b>仓库如何运转</a>
+      <a href="#tick"><b>03</b>一个时间步</a>
+      <a href="#cost"><b>04</b>派单代价</a>
+      <a href="#chain"><b>05</b>决策链路</a>
+      <a href="#events"><b>06</b>三类关键事件</a>
+      <a href="#ui"><b>07</b>界面如何阅读</a>
+      <a href="#scope"><b>08</b>结果与边界</a>
+    </nav>
+  </header>
+
+  <section id="problem">
+    <h2>问题与目标</h2>
+    <p>多台机器人共用同一组窄通道。它们会在取货点与送货点之间交会，也会因故障停在通道上，或在短时间内接收一批新订单。若每一格移动都询问大模型，演示难以连续进行，决策依据也不易核对。</p>
+    <div class="grid-3">
+      <article class="box teal">
+        <h3>仿真必须可信</h3>
+        <p>地图、路径、碰撞和订单状态由 Rust 内核计算。相同版本、相同种子和相同命令序列，得到相同的世界状态与指标。</p>
+      </article>
+      <article class="box">
+        <h3>常规调度必须可解释</h3>
+        <p>没有关键事件时，系统按公开的代价分配订单，不访问模型。代价由坐标和已完成单数算出。</p>
+      </article>
+      <article class="box red">
+        <h3>例外必须看得见</h3>
+        <p>故障改派、对向让路和订单突发会在顶栏标出对应 Agent，并在决策页留下说明。模型失效时退回同一套规则。</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="warehouse">
+    <h2>仓库如何运转</h2>
+    <p class="section-note">默认演示为 24×16 的网格、5 组双深货架、5 台机器人。下图是布局示意，不是某一时刻的运行快照。</p>
+    <div class="grid-2">
+      <div>
+        <svg class="figure" viewBox="0 0 520 300" role="img" aria-label="默认仓库布局示意：五组竖向货架，通道位于货架之间，机器人起始于左侧">
+          <rect width="520" height="300" fill="#f8fbfa"/>
+          <g fill="#d7e3ea">
+            <rect x="108" y="48" width="22" height="176"/>
+            <rect x="134" y="48" width="22" height="176"/>
+            <rect x="178" y="48" width="22" height="176"/>
+            <rect x="204" y="48" width="22" height="176"/>
+            <rect x="248" y="48" width="22" height="176"/>
+            <rect x="274" y="48" width="22" height="176"/>
+            <rect x="318" y="48" width="22" height="176"/>
+            <rect x="344" y="48" width="22" height="176"/>
+            <rect x="388" y="48" width="22" height="176"/>
+            <rect x="414" y="48" width="22" height="176"/>
+          </g>
+          <g fill="#0f766e">
+            <circle cx="48" cy="70" r="9"/>
+            <circle cx="48" cy="118" r="9"/>
+            <circle cx="48" cy="166" r="9"/>
+            <circle cx="72" cy="94" r="9"/>
+            <circle cx="72" cy="190" r="9"/>
+          </g>
+          <circle cx="168" cy="86" r="6" fill="#3b82f6"/>
+          <circle cx="456" cy="246" r="6" fill="#d97706"/>
+          <path d="M168 86 V246 H456" fill="none" stroke="#0f766e" stroke-width="2"/>
+          <text x="16" y="28" fill="#526174" font-size="13">左侧为机器人起始区域</text>
+          <text x="108" y="276" fill="#526174" font-size="13">五组双深货架，中间留出通道</text>
+        </svg>
+        <p class="caption">蓝色点表示取货点，橙色点表示送货点，折线表示一条沿通道行走的路径。坐标原点在左上角，x 向右，y 向下。货架格不可通行，也不能作为取货点或送货点。</p>
+      </div>
+      <div>
+        <article class="box">
+          <h3>机器人</h3>
+          <div class="states" aria-label="机器人状态">
+            <span class="state">空闲</span><span class="arrow">→</span>
+            <span class="state now">去取货</span><span class="arrow">→</span>
+            <span class="state now">去送货</span><span class="arrow">→</span>
+            <span class="state">空闲</span>
+          </div>
+          <p>一台机器人同时只执行一张订单。故障不在这条主链上，而是单独进入停机，并占据当前格子。</p>
+          <span class="state bad">故障停机</span>
+        </article>
+        <article class="box" style="margin-top:12px">
+          <h3>订单</h3>
+          <div class="states" aria-label="订单状态">
+            <span class="state">待分配</span><span class="arrow">→</span>
+            <span class="state">已分配</span><span class="arrow">→</span>
+            <span class="state now">运输中</span><span class="arrow">→</span>
+            <span class="state">已完成</span>
+          </div>
+          <p>取货与送达不额外占用时间。到达取货点后订单进入运输中，到达送货点后记为完成，并累计该单从创建到完成的 tick。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="tick">
+    <h2>一个时间步里发生什么</h2>
+    <p class="section-note">时间是离散的。界面上的速度只改变两步之间的等待，不改变一格的含义。1 倍速大约每 0.9 秒推进一步。</p>
+    <div class="grid-2">
+      <ol class="pipeline">
+        <li><span class="n">1</span><strong>处理当前位置</strong><p>已经到达取货点或送货点的机器人先完成取货或送达，再为仍空闲的机器人安排任务。</p></li>
+        <li><span class="n">2</span><strong>规划下一步</strong><p>路径由四方向 A* 生成，一格为一步。规划会考虑其他机器人当前占用，但进入格子前仍须通过安全检查。</p></li>
+        <li><span class="n">3</span><strong>全体同步移动</strong><p>每台执行中的机器人本步最多移动一格。检查顺序逐轮轮换，避免编号小的机器人始终优先。</p></li>
+        <li><span class="n">4</span><strong>记账</strong><p>记录到达、等待和热力图。连续等待满 3 步会写入「等待绕行」，并在随后的步骤中尝试重规划。</p></li>
+      </ol>
+      <div>
+        <article class="box">
+          <h3>三条约定保证不相撞</h3>
+          <p>本步开始时所在的格子，以及本步选定的目标格，都会被预留。</p>
+          <ul class="clean">
+            <li>两台机器人不能进入同一格。</li>
+            <li>面对面的两台不能在同一步交换位置。</li>
+            <li>后车不能在同一步跟随前车进入其刚刚离开的格子。</li>
+          </ul>
+        </article>
+        <article class="box amber" style="margin-top:12px">
+          <h3>无路时保持原状</h3>
+          <p>目标不可达时机器人不移动，订单也不会被记成完成。封锁会立即作废经过该格的旧路径；机器人脚下的格子不能被改成障碍。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="cost">
+    <h2>派单如何比较候选人</h2>
+    <p>演示运行时，仿真自身的自动派单被关闭，避免与 Agent 重复分配。日常订单由 Agent 内的本地规则处理。规则与决策页上的候选对比使用同一公式。</p>
+    <p class="formula">代价 = 到目标的格数 + 已完成单数 × 4<small>去取货时，格数是当前位置到取货点的曼哈顿距离；已经取到货时，按剩余送货路径计算。</small></p>
+    <p class="caption">下面是演算示例，不是某一次运行的记录。</p>
+    <table>
+      <thead>
+        <tr><th>候选人</th><th>到取货点</th><th>已完成</th><th>代价</th><th>结果</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>R2</td><td>5 格</td><td>3 单</td><td>5 + 12 = 17</td><td>距离更近，但负载更高</td></tr>
+        <tr><td>R4</td><td>8 格</td><td>0 单</td><td>8 + 0 = 8</td><td>本轮分给 R4</td></tr>
+      </tbody>
+    </table>
+    <p>因此，少完成订单的机器人可以优先于单纯距离更近的机器人。这个系数 4 是可解释的均衡基线，不表示全局最优。</p>
+    <div class="grid-3">
+      <article class="box"><h3>nearest</h3><p>只比较到取货点的实际路径长度。演示主流程不使用这一策略自动派单。</p></article>
+      <article class="box"><h3>balanced</h3><p>路径长度再加已完成单数乘 4。与上面的代价同一思想。</p></article>
+      <article class="box teal"><h3>manual</h3><p>仿真不再自动派单。界面上的「立即派单」随之无效。指定某一台机器人，需要在订单页手动分配。</p></article>
+    </div>
+  </section>
+
+  <section id="chain">
+    <h2>从界面到仿真的一条链路</h2>
+    <p class="section-note">浏览器不直接改写仓库。操作先到达本机 8788 端口上的 Agent，再由 Agent 向仿真进程发送 JSON 命令。</p>
+    <div class="grid-3">
+      <article class="box teal">
+        <span class="tag">观察与操作</span>
+        <h3>网页</h3>
+        <p>数字孪生、六个页面和场景注入。播放、单步和顶栏状态在所有页面保持可用。</p>
+      </article>
+      <article class="box">
+        <span class="tag">判断是否询问模型</span>
+        <h3>Agent</h3>
+        <p>读取世界摘要，在本地规则与一次模型调用之间选择，然后请求仿真前进一步。</p>
+      </article>
+      <article class="box">
+        <span class="tag">状态的唯一来源</span>
+        <h3>Rust 仿真</h3>
+        <p>执行路径规划、碰撞检查、故障和指标统计，返回新的世界快照。</p>
+      </article>
+    </div>
+    <div class="grid-2" style="margin-top:14px">
+      <article class="box">
+        <h3>没有关键事件</h3>
+        <p>若不存在新故障、通道对向，也不存在空闲机器人与待分配订单，本步只发送 step。机器人沿已有路径移动一格，顶栏保持「运行中」。</p>
+        <p>若只是普通待分配，系统调用本地规则完成分配，仍然不访问模型。分配之后再推进一步。</p>
+      </article>
+      <article class="box red">
+        <h3>出现三类事件之一</h3>
+        <p>故障、通道对向，或刚刚由界面注入的订单突发，会把压缩后的状态和允许使用的工具提交给模型。顶栏变为红色，并显示对应 Agent 已经等待的秒数。</p>
+        <p>模型超时、额度不足或没有给出有效动作时，同一轮改由本地规则完成，决策说明中会写明原因。演示不会因此停止。</p>
+      </article>
+    </div>
+    <p>每一步返回的快照用于重绘地图、表格和曲线，并写入服务侧会话文件。刷新页面不会丢失当前运行；Agent 服务重启后也可以接上上次的仿真世界。</p>
+  </section>
+
+  <section id="events">
+    <h2>三类关键事件</h2>
+    <p class="section-note">场景按钮先改变仓库。模型在下一次需要决策时才被调用。待处理订单数量增加本身不会被当作订单突发。</p>
+
+    <h3>机器人故障</h3>
+    <div class="story">
+      <article class="box">
+        <strong>注入之前</strong>
+        <p>R1 正在运送订单。其未完成任务仍绑定在这台机器人上。</p>
+      </article>
+      <div class="mid" aria-hidden="true">→</div>
+      <article class="box red">
+        <strong>异常 Agent</strong>
+        <p>R1 停在原地并成为障碍。订单退回待分配，由其他空闲机器人接替，优先选择已完成单数更少者。R1 不会自动恢复。</p>
+      </article>
+    </div>
+    <p>取货前，订单回到原取货点重新分配。取货后，货物留在故障位置或其相邻格，由其他机器人接运后再送往原目的地。这是仿真中的交接假设，不表示机械臂具备卸载能力。只有操作者注入「修复故障」后，该机器人才能重新空闲。</p>
+
+    <h3 style="margin-top:22px">通道对向</h3>
+    <div class="story">
+      <article class="box">
+        <strong>形成对向</strong>
+        <p>两台机器人的下一步互相指向对方当前位置，通道无法同时通过。</p>
+      </article>
+      <div class="mid" aria-hidden="true">→</div>
+      <article class="box red">
+        <strong>路径 Agent</strong>
+        <p>只重规划剩余路程更长的那一台，让它避开正对面的一格。对面机器人以及同向跟随的机器人保持原路径。</p>
+      </article>
+    </div>
+
+    <h3 style="margin-top:22px">订单突发</h3>
+    <div class="story">
+      <article class="box">
+        <strong>手动注入</strong>
+        <p>操作者指定数量，系统按种子在可通行且相互可达的格子上生成一批新订单，并打上突发标记。</p>
+      </article>
+      <div class="mid" aria-hidden="true">→</div>
+      <article class="box red">
+        <strong>派单 Agent</strong>
+        <p>下一步若仍有空闲机器人，模型负责把这批订单分散出去。每个空闲机器人最多接收一张，避免集中到同一台。</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="ui">
+    <h2>界面如何阅读</h2>
+    <p class="section-note">六个页面共用同一外壳。连接成功后，左侧栏底部显示「Agent 大脑 · 已连接」。若后端未连接，页面会标明当前为演示快照，其中的曲线不能作为实验结果。</p>
+    <div class="shell">
+      <aside class="side">
+        <b>AgentLogistics</b>
+        <small>智能仓储机器人调度系统</small>
+        <ul class="nav-mini">
+          <li class="on">总览 · 全仓</li>
+          <li>机器人管理 · 单车</li>
+          <li>订单调度 · 单票</li>
+          <li>Agent 决策 · 原因</li>
+          <li>数据分析 · 本次运行</li>
+          <li>系统设置 · 参数</li>
+        </ul>
+      </aside>
+      <div>
+        <div class="topbar">
+          <span>页标题与「重置世界」</span>
+          <span>运行状态 · 机器人数 · 订单数 · 完成数 · 异常数</span>
+        </div>
+        <div class="stage">询问模型时，运行状态变为红色，并写明是异常 Agent、路径 Agent 还是派单 Agent，以及已经等待的秒数。右侧始终保留当前 tick、速度、播放、单步和主题切换。</div>
+      </div>
+    </div>
+
+    <div class="pages">
+      <article class="box">
+        <h3>总览：确认全仓正在运行</h3>
+        <p>上方六项计数给出机器人总数、运行中、订单总数、已完成、待分配和故障机器人数。中央地图支持等距、俯视和侧视，左键旋转、右键平移、滚轮缩放。路径、订单点、热力图、拥堵、故障和坐标可以分别开关。</p>
+        <p>地图上方的一行文字在发生派单、让路或故障改派后换成该次说明。右侧为吞吐量、平均完成时间、利用率和待处理订单。底部默认打开场景事件，也可切换到机器人、订单、日志、决策摘要和趋势。</p>
+      </article>
+      <article class="box">
+        <h3>机器人管理：核对一台机器人</h3>
+        <p>可按全部、运行中、空闲和故障筛选，或按编号与订单号搜索。卡片列出坐标、当前任务、取送货点和利用率。利用率等于该机器人处于任务中的 tick 除以已运行 tick，系统不提供电量。</p>
+        <p>中间简图为俯视，图标位置对应真实坐标。右侧详情分为基本信息、任务、后续最多十格路径，以及与该机器人相关的最近事件。</p>
+      </article>
+      <article class="box">
+        <h3>订单调度：核对一张订单</h3>
+        <p>状态分为待分配、已分配、运输中和已完成。另有一类异常，表示货物仍停留在故障后的接运位置。表格给出优先级、取送货点、执行机器人和剩余 tick。剩余 tick 等于剩余路径格数。</p>
+        <p>对待分配订单可以指定一台空闲机器人，该操作不经过模型。创建订单时回到总览地图，依次选择取货点与送货点；货架格和同一格子会被拒绝。</p>
+      </article>
+      <article class="box">
+        <h3>Agent 决策：核对一次选择</h3>
+        <p>页面顶部按事件发现、分析、选定方案和执行四步展开。简图同时标出货架、机器人、取送货点、规划路线和封锁。候选对比列出每台机器人的状态、格数和综合代价，点选后可在图中定位。</p>
+        <p>决策原因把距离、已完成单数和通道情况分开书写。日志按 tick 保留分配、让路和改派。尚未运行时这些区域为空，不表示系统缺少决策能力。</p>
+      </article>
+      <article class="box">
+        <h3>数据分析：汇总这一次运行</h3>
+        <p>首行给出完成订单、完成率、平均完成时间、全队利用率和当前故障。其下是分机器人的利用率曲线，以及由停留 tick 绘制的仓库热力图，货架不参与着色。</p>
+        <p>订单状态、平均取货时间、平均送达时间、累计行驶格数和累计等待另行列出。异常统计区分机器人故障、道路封锁、道路恢复和订单突发。订单突发的次数只统计界面中成功注入的次数。</p>
+      </article>
+      <article class="box">
+        <h3>系统设置：参数与连接</h3>
+        <p>可调整随机种子、调度策略、重置后是否自动生成订单、生成数量和仿真速度。应用这些仿真参数会重置世界。地图视角和图层开关立即生效，并保存在本机。</p>
+        <p>连接卡片显示服务地址、连接状态、当前 tick、数据来源和最近一次错误。页首「感知仓库 · 理解任务 · 智能决策 · 协同执行」是界面题词，不是四个独立子系统。</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="scope">
+    <h2>演示顺序、结果与边界</h2>
+    <div class="grid-2eq">
+      <article class="box">
+        <h3>建议的观察顺序</h3>
+        <ol class="clean">
+          <li>开始运行。顶栏为「运行中」，机器人沿路径移动，此时不询问模型。</li>
+          <li>注入订单突发。顶栏转红，派单 Agent 分配这批新订单。</li>
+          <li>封锁一段通道，或等待对向形成。路径 Agent 只调整路程更长的一台。</li>
+          <li>注入一台故障。该机器人停止，订单被改派，且不会自行恢复。</li>
+          <li>在地图上创建一张订单，确认货架不能作为端点。</li>
+          <li>打开数据分析，用热力图和完成单数结束。这些数字属于本次运行。</li>
+        </ol>
+        <p>观察过程中不要使用「重置世界」，否则当前仿真和本机保存的进度会被清除。</p>
+      </article>
+      <article class="box">
+        <h3>可以核对的结果</h3>
+        <p>当前 tick、完成与待处理订单、故障机器人数、每 100 tick 的吞吐量、平均完成 tick、利用率、总行驶格数、总等待 tick、剩余路径和热力图停留次数，均来自仿真内核。</p>
+        <h3>当前没有覆盖的部分</h3>
+        <p>系统不模拟电量、充电、加速度、车身体积和真实机械取放。调度规则是可解释基线，不是全局最优。模型不决定每一格移动。故障不会自动消失。本系统尚未连接真实仓库，也不支持多用户同时操作。</p>
+        <p>单宽通道被占用、必经之路被空闲机器人堵住或目的地被封锁时，机器人可能持续等待。仿真保证不相撞，不保证每一张订单最终都能完成。</p>
+      </article>
+    </div>
+  </section>
+
+  <footer>演示入口为 http://127.0.0.1:8788/ 。模型密钥仅保留在运行该服务的本机，不进入讲解材料。</footer>
+</main>
+</body>
+</html>

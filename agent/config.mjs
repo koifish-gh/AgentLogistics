@@ -53,6 +53,7 @@ export const CONFIG = {
   ticksPerTurn: asInt(process.env.AGENT_TICKS_PER_TURN, 1),
   maxTurns: asInt(process.env.AGENT_MAX_TURNS, 300),
   explain: asBool(process.env.AGENT_EXPLAIN, false),
+  eventTimeoutMs: asInt(process.env.AGENT_EVENT_TIMEOUT_MS, 25000),
   port: asInt(process.env.AGENT_PORT, 8788),
   eventLimit: asInt(process.env.AGENT_EVENT_LIMIT, 60),
 };

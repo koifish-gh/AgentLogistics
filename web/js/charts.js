@@ -12,9 +12,24 @@ function setup(canvas) {
   return { ctx, w, h };
 }
 
-const PALETTE = ['#2cc6b0', '#5b9bff', '#f0b34a', '#ff6b7a', '#4fc46f', '#9b7bff'];
+const PALETTE = ['#0D9488', '#3B82F6', '#F59E0B', '#EF4444', '#16A34A', '#7C3AED'];
 
-export function sparkline(canvas, series, color = '#2cc6b0', { fill = false } = {}) {
+function axisColor() {
+  return document.documentElement.dataset.theme === 'dark' ? '#94a3b8' : '#64748b';
+}
+function gridColor() {
+  return document.documentElement.dataset.theme === 'dark' ? 'rgba(148,163,184,0.16)' : 'rgba(100,116,139,0.16)';
+}
+function formatTick(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '—';
+  const abs = Math.abs(n);
+  if (abs >= 100) return String(Math.round(n));
+  if (abs >= 10) return String(Math.round(n * 10) / 10);
+  return String(Math.round(n * 100) / 100);
+}
+
+export function sparkline(canvas, series, color = '#0D9488', { fill = false } = {}) {
   const { ctx, w, h } = setup(canvas);
   ctx.clearRect(0, 0, w, h);
   if (!series || series.length < 2) return;
@@ -49,34 +64,34 @@ export function sparkline(canvas, series, color = '#2cc6b0', { fill = false } = 
   ctx.stroke();
 }
 
-export function lineChart(canvas, seriesList, { yFormat = (v) => v } = {}) {
+export function lineChart(canvas, seriesList, { yFormat = formatTick, min: fixedMin, max: fixedMax } = {}) {
   const { ctx, w, h } = setup(canvas);
   ctx.clearRect(0, 0, w, h);
-  const padL = 38;
+  const padL = 42;
   const padR = 10;
   const padT = 12;
   const padB = 20;
   const plotW = w - padL - padR;
   const plotH = h - padT - padB;
-  if (!seriesList.length || !seriesList[0].data.length) {
-    ctx.fillStyle = '#6c7f94';
-    ctx.font = '12px sans-serif';
-    ctx.fillText('暂无数据', padL, h / 2);
+  const longest = Math.max(0, ...seriesList.map((series) => series.data?.length || 0));
+  if (!seriesList.length || longest < 2) {
+    ctx.fillStyle = axisColor();
+    ctx.font = '13px "Segoe UI", "Microsoft YaHei", sans-serif';
+    ctx.fillText('数据点不足，继续运行后显示趋势', 16, h / 2);
     return;
   }
   const all = seriesList.flatMap((s) => s.data);
-  let min = Math.min(...all);
-  let max = Math.max(...all);
+  let min = fixedMin ?? Math.min(...all);
+  let max = fixedMax ?? Math.max(...all);
   if (min === max) { min -= 1; max += 1; }
-  const n = seriesList[0].data.length;
+  const n = longest;
 
   const xAt = (i) => padL + (n <= 1 ? 0.5 : i / (n - 1)) * plotW;
   const yAt = (v) => padT + (1 - (v - min) / (max - min)) * plotH;
 
-  // 网格 + Y 轴
-  ctx.strokeStyle = 'rgba(94,116,138,0.14)';
-  ctx.fillStyle = '#6c7f94';
-  ctx.font = '10px sans-serif';
+  ctx.strokeStyle = gridColor();
+  ctx.fillStyle = axisColor();
+  ctx.font = '11px "Segoe UI", sans-serif';
   ctx.textAlign = 'right';
   ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i += 1) {
@@ -117,9 +132,9 @@ export function barChart(canvas, categories, seriesList, { yFormat = (v) => v } 
   const all = seriesList.flatMap((s) => s.data);
   const max = Math.max(1, ...all);
 
-  ctx.strokeStyle = 'rgba(94,116,138,0.14)';
-  ctx.fillStyle = '#6c7f94';
-  ctx.font = '10px sans-serif';
+  ctx.strokeStyle = gridColor();
+  ctx.fillStyle = axisColor();
+  ctx.font = '11px "Segoe UI", sans-serif';
   ctx.textAlign = 'right';
   for (let i = 0; i <= 4; i += 1) {
     const v = (max * i) / 4;
@@ -146,7 +161,7 @@ export function barChart(canvas, categories, seriesList, { yFormat = (v) => v } 
     });
   });
 
-  ctx.fillStyle = '#9fb0c3';
+  ctx.fillStyle = axisColor();
   ctx.font = '11px sans-serif';
   categories.forEach((cat, ci) => {
     const cx = padL + groupW * ci + groupW / 2;
@@ -156,49 +171,53 @@ export function barChart(canvas, categories, seriesList, { yFormat = (v) => v } 
 }
 
 // 仓库热力图：grid 为二维数组
-export function heatmap(canvas, grid, { cell } = {}) {
+export function heatmap(canvas, grid, { cell, obstacles = [], blocked = [] } = {}) {
   const { ctx, w, h } = setup(canvas);
   ctx.clearRect(0, 0, w, h);
-  if (!grid || !grid.length) return;
+  if (!grid || !grid.length) {
+    ctx.fillStyle = axisColor();
+    ctx.font = '13px "Segoe UI", "Microsoft YaHei", sans-serif';
+    ctx.fillText('暂无仓库地图', 16, h / 2);
+    return;
+  }
   const rows = grid.length;
   const cols = grid[0].length;
-  const cw = cell || Math.floor(w / cols);
+  const cw = cell || Math.max(4, Math.floor(Math.min(w / cols, h / rows)));
   const ch = cw;
   const ox = Math.floor((w - cw * cols) / 2);
   const oy = Math.floor((h - ch * rows) / 2);
+  const shelf = new Set(obstacles.map((point) => `${point.x},${point.y}`));
+  const closed = new Set(blocked.map((point) => `${point.x},${point.y}`));
   let max = 1;
-  for (const row of grid) for (const v of row) max = Math.max(max, v);
   for (let y = 0; y < rows; y += 1) {
     for (let x = 0; x < cols; x += 1) {
-      const v = grid[y][x] || 0;
-      ctx.fillStyle = heatColor(v / max);
-      ctx.fillRect(ox + x * cw, oy + y * ch, cw - 0.5, ch - 0.5);
+      if (!shelf.has(`${x},${y}`)) max = Math.max(max, grid[y][x] || 0);
+    }
+  }
+  for (let y = 0; y < rows; y += 1) {
+    for (let x = 0; x < cols; x += 1) {
+      const key = `${x},${y}`;
+      if (shelf.has(key)) ctx.fillStyle = '#d5dee8';
+      else ctx.fillStyle = heatColor((grid[y][x] || 0) / max);
+      ctx.fillRect(ox + x * cw, oy + y * ch, cw - 0.4, ch - 0.4);
+      if (closed.has(key)) {
+        ctx.strokeStyle = '#b91c1c';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(ox + x * cw + 0.5, oy + y * ch + 0.5, cw - 1.4, ch - 1.4);
+      }
     }
   }
 }
 
-// 蓝 → 青 → 黄 → 橙 → 红，低饱和度
+// 主色由浅到深。t 为 0..1，按当前图里最高停留次数归一化。
 function heatColor(t) {
-  const stops = [
-    [0.0, '#101b2b'],
-    [0.35, '#155e6e'],
-    [0.6, '#2cc6b0'],
-    [0.8, '#f0b34a'],
-    [1.0, '#e0523c'],
-  ];
-  let a = stops[0];
-  let b = stops[stops.length - 1];
-  for (let i = 0; i < stops.length - 1; i += 1) {
-    if (t >= stops[i][0] && t <= stops[i + 1][0]) { a = stops[i]; b = stops[i + 1]; break; }
-  }
-  const span = b[0] - a[0] || 1;
-  const k = (t - a[0]) / span;
-  const ac = hexRgb(a[1]);
-  const bc = hexRgb(b[1]);
-  const r = Math.round(ac.r + (bc.r - ac.r) * k);
-  const g = Math.round(ac.g + (bc.g - ac.g) * k);
-  const bl = Math.round(ac.b + (bc.b - ac.b) * k);
-  return `rgb(${r},${g},${bl})`;
+  const k = Math.max(0, Math.min(1, t));
+  const light = hexRgb('#e7f6f3');
+  const dark = hexRgb('#0f766e');
+  const r = Math.round(light.r + (dark.r - light.r) * k);
+  const g = Math.round(light.g + (dark.g - light.g) * k);
+  const b = Math.round(light.b + (dark.b - light.b) * k);
+  return `rgb(${r},${g},${b})`;
 }
 
 function hexRgb(hex) {
@@ -208,6 +227,56 @@ function hexRgb(hex) {
     g: parseInt(h.slice(2, 4), 16),
     b: parseInt(h.slice(4, 6), 16),
   };
+}
+
+export function donutChart(canvas, slices, { legend = true, center } = {}) {
+  const { ctx, w, h } = setup(canvas);
+  ctx.clearRect(0, 0, w, h);
+  const data = (slices || []).filter((slice) => slice.value > 0);
+  const total = data.reduce((sum, slice) => sum + slice.value, 0);
+  if (!total) {
+    ctx.fillStyle = axisColor();
+    ctx.font = '13px "Segoe UI", "Microsoft YaHei", sans-serif';
+    ctx.fillText('暂无订单', 16, h / 2);
+    return;
+  }
+  const cx = legend ? w * 0.34 : w / 2;
+  const cy = h / 2;
+  const radius = Math.min(legend ? w * 0.28 : w * 0.36, h * 0.38);
+  let angle = -Math.PI / 2;
+  data.forEach((slice) => {
+    const sweep = (slice.value / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, radius, angle, angle + sweep);
+    ctx.closePath();
+    ctx.fillStyle = slice.color;
+    ctx.fill();
+    angle += sweep;
+  });
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius * 0.58, 0, Math.PI * 2);
+  ctx.fillStyle = document.documentElement.dataset.theme === 'dark' ? '#111827' : '#ffffff';
+  ctx.fill();
+  if (center) {
+    ctx.textAlign = 'center';
+    ctx.fillStyle = document.documentElement.dataset.theme === 'dark' ? '#e5e7eb' : '#0f172a';
+    ctx.font = '700 20px "Segoe UI", "Microsoft YaHei", sans-serif';
+    ctx.fillText(String(center.value), cx, cy - 2);
+    ctx.fillStyle = axisColor();
+    ctx.font = '11px "Segoe UI", "Microsoft YaHei", sans-serif';
+    ctx.fillText(center.label, cx, cy + 16);
+  }
+  if (!legend) return;
+  ctx.font = '12px "Segoe UI", "Microsoft YaHei", sans-serif';
+  ctx.textAlign = 'left';
+  data.forEach((slice, index) => {
+    const y = 28 + index * 22;
+    ctx.fillStyle = slice.color;
+    ctx.fillRect(w * 0.62, y - 9, 10, 10);
+    ctx.fillStyle = axisColor();
+    ctx.fillText(`${slice.label}  ${slice.value}`, w * 0.62 + 16, y);
+  });
 }
 
 function roundRect(ctx, x, y, w, h, r) {

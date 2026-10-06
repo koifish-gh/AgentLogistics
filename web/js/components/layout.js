@@ -2,7 +2,7 @@
 
 import { NAV_ITEMS, PAGE_META, SPEED_STEPS, STRATEGIES } from '../constants.js';
 import { store } from '../store.js';
-import { icon, values, $ } from '../util.js';
+import { icon, $ } from '../util.js';
 
 export function renderNav(container) {
   container.innerHTML = NAV_ITEMS.map(
@@ -25,6 +25,10 @@ export function setActiveNav(path) {
 }
 
 export function renderHeader(statsEl, controlsEl) {
+  statsEl.innerHTML = `<div id="headerLive" class="header-live"></div>`;
+  const live = $('#headerLive');
+  $('#hResetWorld').addEventListener('click', () => store.reset(store.seed).catch((e) => store.notify('error', e)));
+
   controlsEl.innerHTML = `
     <div class="stat num"><span>Tick</span><b id="hTick">0</b></div>
     <div class="speed-seg" id="speedSeg">
@@ -32,7 +36,8 @@ export function renderHeader(statsEl, controlsEl) {
     </div>
     <button class="icon-btn" id="hPlay" title="运行 / 暂停">${icon('play')}</button>
     <button class="icon-btn" id="hStep" title="前进一步">${icon('step')}</button>
-    <button class="icon-btn" id="hReset" title="重置世界">${icon('reset')}</button>
+    <button class="icon-btn" id="hReset" title="重置世界，并清除本机保存">${icon('reset')}</button>
+    <button class="icon-btn" id="hTheme" title="切换浅色 / 深色">${icon(store.theme === 'dark' ? 'sun' : 'moon')}</button>
     <button class="icon-btn" id="hSettings" title="系统设置">${icon('settings')}</button>
   `;
 
@@ -46,32 +51,45 @@ export function renderHeader(statsEl, controlsEl) {
   $('#hStep').addEventListener('click', () => store.stepOnce());
   $('#hReset').addEventListener('click', () => store.reset(store.seed).catch((e) => store.notify('error', e)));
   $('#hSettings').addEventListener('click', () => { location.hash = '/settings'; });
+  $('#hTheme').addEventListener('click', () => {
+    store.set({ theme: store.theme === 'dark' ? 'light' : 'dark' });
+  });
 
   const update = () => {
-    const world = store.world;
-    const kpis = store.kpis;
-    const robots = values(world?.robots || {});
-    const orders = values(world?.orders || {});
-    $('#hTick').textContent = world?.tick ?? 0;
+    const summary = store.summary();
+    $('#hTick').textContent = summary.tick;
     $('#hPlay').innerHTML = icon(store.playing ? 'pause' : 'play');
+    const themeBtn = $('#hTheme');
+    if (themeBtn) themeBtn.innerHTML = icon(store.theme === 'dark' ? 'sun' : 'moon');
     controlsEl.querySelectorAll('#speedSeg button').forEach((btn) => {
       btn.classList.toggle('active', Number(btn.dataset.speed) === store.speed);
     });
 
-    const status = store.mockMode ? 'warn' : store.connected ? 'ok' : 'bad';
-    const statusText = store.mockMode ? 'Mock 演示' : store.connected ? '运行中' : '未连接';
-    statsEl.innerHTML = `
-      <div class="stat dot ${status}"><i></i><span>${statusText}</span></div>
-      <div class="stat num"><span>机器人</span><b>${robots.length}</b></div>
-      <div class="stat num"><span>订单</span><b>${orders.length}</b></div>
-      <div class="stat num"><span>完成</span><b>${kpis?.completed_orders ?? 0}</b></div>
-      <div class="stat num"><span>异常</span><b style="color:${(kpis?.faulted_robots ?? 0) > 0 ? 'var(--danger)' : 'inherit'}">${kpis?.faulted_robots ?? 0}</b></div>
+    const waited = store.deciding ? Math.max(0, Math.round((Date.now() - store.decideStarted) / 1000)) : 0;
+    const modelEvent = store.deciding ? store.modelEventName() : '';
+    const status = store.mockMode ? 'warn' : store.deciding ? 'warn' : store.connected ? 'ok' : 'bad';
+    const statusText = store.mockMode
+      ? '演示数据'
+      : store.deciding
+        ? (modelEvent ? `${modelEvent} 询问模型 ${waited}s` : `决策中 ${waited}s`)
+        : store.connected
+          ? (store.playing ? '运行中' : '已连接')
+          : '未连接';
+    live.innerHTML = `
+      <div class="stat dot ${status}${store.deciding ? ' deciding' : ''}"><i></i><span>${statusText}</span></div>
+      <div class="stat num"><span>机器人</span><b>${summary.robots}</b></div>
+      <div class="stat num"><span>订单</span><b>${summary.orders}</b></div>
+      <div class="stat num"><span>完成</span><b>${summary.completed}</b></div>
+      <div class="stat num"><span>异常</span><b style="color:${summary.faulted > 0 ? 'var(--danger)' : 'inherit'}">${summary.faulted}</b></div>
     `;
   };
 
   store.subscribe((tag) => {
-    if (tag === 'world' || tag === 'state' || tag === 'projection' || tag === 'toggle') update();
+    if (tag === 'world' || tag === 'state' || tag === 'projection' || tag === 'toggle' || tag === 'theme') update();
   });
+  setInterval(() => {
+    if (store.deciding) update();
+  }, 1000);
   update();
 }
 

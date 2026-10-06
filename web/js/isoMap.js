@@ -3,17 +3,17 @@
 //       视角限制（pitch 15°~75°、缩放 0.3~4、平移限于仓库范围）、3D 货架、机器人、路径、拥堵、故障、热力、点击选中。
 // 视角状态完全独立于仿真逻辑：仅修改 camera，不触碰 store 中的机器人/路径/订单/tick。
 
-import { robotStatusColor } from './constants.js';
+import { robotPathColor, robotStatusColor } from './constants.js';
 import { values, clamp } from './util.js';
 
 const DEG = Math.PI / 180;
 const DEFAULT_YAW = 45 * DEG;
 const DEFAULT_PITCH = 30 * DEG;
 const PITCH_MIN = 15 * DEG;
-const PITCH_MAX = 75 * DEG;
+const PITCH_MAX = 82 * DEG;
 const SCALE_MIN = 0.3;
 const SCALE_MAX = 4;
-const SHELF_H = 0.55;          // 货架世界高度（cell 单位）
+const SHELF_H = 0.72;          // 货架世界高度（cell 单位），明显高于地面机器人
 const PAN_MARGIN = 80;         // 平移约束留白
 
 // ---------- 颜色工具：派生霓虹色（顶面更亮、侧面更暗） ----------
@@ -51,7 +51,10 @@ export class IsoMap {
     this._drag = null;
     this._raf = 0;
     this._fitted = false;
+    this._userMoved = false;
+    this._palette = null;
     this._tileOffs = [];     // 当前 yaw/pitch 下，单位 tile 4 角偏移（屏幕像素）
+    this._onFs = () => { this._userMoved = false; this._fitted = false; };
 
     this._bindEvents();
     this._loop();
@@ -140,21 +143,27 @@ export class IsoMap {
   }
 
   resetView() {
+    this._userMoved = false;
     this._fitted = false;
     this.fitToView();
+  }
+
+  focusWorld(x, y) {
+    this._focusOn(x, y);
   }
 
   // 视角预设：只动 camera，不动 store
   setView(preset) {
     const presets = {
       default: { yaw: DEFAULT_YAW, pitch: DEFAULT_PITCH },
-      top: { yaw: DEFAULT_YAW, pitch: 85 * DEG },     // 接近正上方，仍保留等距朝向，便于观察布局
-      side: { yaw: DEFAULT_YAW, pitch: 15 * DEG },   // 低俯角，便于观察货架高度
+      top: { yaw: DEFAULT_YAW, pitch: 80 * DEG },
+      side: { yaw: 12 * DEG, pitch: 18 * DEG },
     };
     const p = presets[preset];
     if (!p) return;
     this.camera.yaw = p.yaw;
     this.camera.pitch = clamp(p.pitch, PITCH_MIN, PITCH_MAX);
+    this._userMoved = false;
     this._fitted = false;
     this.fitToView();
   }
@@ -174,6 +183,7 @@ export class IsoMap {
 
   _zoomAt(px, py, factor) {
     const before = this.screenToWorld(px, py);
+    this._userMoved = true;
     this.camera.scale = clamp(this.camera.scale * factor, SCALE_MIN, SCALE_MAX);
     const after = this.worldToScreen(before.x, before.y);
     this.camera.cx += px - after.x;
@@ -229,8 +239,12 @@ export class IsoMap {
       if (this._drag) {
         const dx = e.clientX - this._drag.x;
         const dy = e.clientY - this._drag.y;
-        if (Math.abs(dx) + Math.abs(dy) > 3) this._drag.moved = true;
-        if (this._drag.button === 0) {
+        const placing = this.store.segmentPick || this.store.orderDraft;
+        if (Math.abs(dx) + Math.abs(dy) > 3 && !(placing && this._drag.button === 0)) {
+          this._drag.moved = true;
+          this._userMoved = true;
+        }
+        if (this._drag.button === 0 && !placing) {
           // 左键：自由旋转（yaw 360°，pitch 限 15°~75°，禁止翻转 / 穿地）
           this.camera.yaw -= dx * 0.01;
           this.camera.pitch = clamp(this.camera.pitch - dy * 0.01, PITCH_MIN, PITCH_MAX);
@@ -249,6 +263,11 @@ export class IsoMap {
       const wasDrag = this._drag?.moved;
       const button = this._drag?.button;
       this._drag = null;
+      if ((this.store.segmentPick || this.store.orderDraft) && button === 0) {
+        const rect = c.getBoundingClientRect();
+        this._pick(e.clientX - rect.left, e.clientY - rect.top);
+        return;
+      }
       if (wasDrag) return;
       if (button !== 0) return;   // 仅左键单击触发选中
       const rect = c.getBoundingClientRect();
@@ -262,6 +281,7 @@ export class IsoMap {
       else this.resetView();
     });
     c.addEventListener('contextmenu', (e) => e.preventDefault());   // 屏蔽右键菜单，让右键拖动可用
+    document.addEventListener('fullscreenchange', this._onFs);
   }
 
   _worldCell(px, py) {
@@ -275,6 +295,16 @@ export class IsoMap {
   }
 
   _pick(px, py) {
+    if (this.store.orderDraft) {
+      const picked = this._worldCell(px, py);
+      if (picked) this.onSelect({ kind: 'order-point', x: picked.x, y: picked.y });
+      return;
+    }
+    if (this.store.segmentPick) {
+      const picked = this._worldCell(px, py);
+      if (picked) this.onSelect({ kind: 'segment', x: picked.x, y: picked.y });
+      return;
+    }
     const data = this.store.data();
     if (!data.world) return;
     const world = data.world;
@@ -318,19 +348,64 @@ export class IsoMap {
 
   destroy() {
     cancelAnimationFrame(this._raf);
+    document.removeEventListener('fullscreenchange', this._onFs);
+  }
+
+  _readPalette() {
+    const dark = document.documentElement.dataset.theme === 'dark';
+    if (dark) {
+      return {
+        bg: '#0f172a',
+        road: '#1e293b',
+        shelfFloor: '#111827',
+        roadStroke: 'rgba(148,163,184,0.28)',
+        shelfStroke: 'rgba(148,163,184,0.2)',
+        shelfTop: '#94a3b8',
+        shelfSide: '#64748b',
+        shelfSideDark: '#475569',
+        post: 'rgba(15,23,42,0.85)',
+        label: '#f8fafc',
+        labelBg: 'rgba(15,23,42,0.9)',
+        labelStroke: 'rgba(226,232,240,0.35)',
+        shadow: 'rgba(0,0,0,0.35)',
+        axis: '#94a3b8',
+      };
+    }
+    return {
+      bg: '#e8eef6',
+      road: '#f8fafc',
+      shelfFloor: '#e2e8f0',
+      roadStroke: 'rgba(100,116,139,0.28)',
+      shelfStroke: 'rgba(100,116,139,0.22)',
+      shelfTop: '#cbd5e1',
+      shelfSide: '#94a3b8',
+      shelfSideDark: '#7c8ea0',
+      post: 'rgba(51,65,85,0.55)',
+      label: '#172B4D',
+      labelBg: 'rgba(255,255,255,0.94)',
+      labelStroke: '#cbd5e1',
+      shadow: 'rgba(15,23,42,0.18)',
+      axis: '#64748B',
+    };
   }
 
   render() {
     const ctx = this.ctx;
     const rect = this.canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
+    if (this._lastW && (Math.abs(rect.width - this._lastW) > 2 || Math.abs(rect.height - this._lastH) > 2) && !this._userMoved) {
+      this._fitted = false;
+    }
+    this._lastW = rect.width;
+    this._lastH = rect.height;
     if (this.canvas.width !== Math.round(rect.width * dpr) || this.canvas.height !== Math.round(rect.height * dpr)) {
       this.canvas.width = Math.round(rect.width * dpr);
       this.canvas.height = Math.round(rect.height * dpr);
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, rect.width, rect.height);
-    ctx.fillStyle = '#0d141b';
+    this._palette = this._readPalette();
+    ctx.fillStyle = this._palette.bg;
     ctx.fillRect(0, 0, rect.width, rect.height);
 
     const world = this.store.world;
@@ -380,16 +455,24 @@ export class IsoMap {
 
     // 5) 货架 + 机器人统一按深度排序（正确遮挡：前方货架挡住后方机器人，机器人不「骑」在货架上）
     const drawables = [];
-    for (const s of map.obstacles || []) drawables.push({ d: s.x + s.y, kind: 'shelf', x: s.x, y: s.y });
-    for (const robot of values(world.robots)) drawables.push({ d: robot.position.x + robot.position.y, kind: 'robot', robot });
-    drawables.sort((a, b) => a.d - b.d);
+    for (const s of map.obstacles || []) {
+      drawables.push({ depth: this.project(s.x, s.y, SHELF_H * 0.5).depth, kind: 'shelf', x: s.x, y: s.y });
+    }
+    for (const robot of values(world.robots)) {
+      const pos = this.store.displayPos(robot.id);
+      drawables.push({ depth: this.project(pos.x, pos.y, 0.16).depth, kind: 'robot', robot });
+    }
+    drawables.sort((a, b) => b.depth - a.depth);
     for (const item of drawables) {
       if (item.kind === 'shelf') this._drawShelf(item.x, item.y);
       else this._drawRobot(item.robot, now, selected);
     }
 
-    // 6) 悬浮高亮
     if (this.hover) this._drawHover(this.hover);
+    this._drawSegmentPreview();
+    this._drawOrderPreview();
+    this.canvas.style.cursor = (this.store.segmentPick || this.store.orderDraft) ? 'crosshair' : '';
+    this._drawAxis(rect);
   }
 
   _maxHeat(world) {
@@ -410,11 +493,12 @@ export class IsoMap {
     const inDropoff = data.zones.dropoff.some((p) => p.x === x && p.y === y);
 
     // 道路：稍亮的深灰蓝；货架区：更深，形成明确边界
-    const road = isShelf ? '#0c1219' : '#17212c';
-    const stroke = isShelf ? 'rgba(80,102,122,0.35)' : 'rgba(70,90,110,0.32)';
+    const pal = this._palette;
+    const road = isShelf ? pal.shelfFloor : pal.road;
+    const stroke = isShelf ? pal.shelfStroke : pal.roadStroke;
     this._tilePoly(center.x, center.y, 1.0, road, stroke);
-    if (!isShelf && inPickup) this._tilePoly(center.x, center.y, 1.0, 'rgba(79,196,111,0.12)', null);
-    if (!isShelf && inDropoff) this._tilePoly(center.x, center.y, 1.0, 'rgba(91,155,255,0.12)', null);
+    if (!isShelf && inPickup) this._tilePoly(center.x, center.y, 1.0, 'rgba(22,163,74,0.10)', null);
+    if (!isShelf && inDropoff) this._tilePoly(center.x, center.y, 1.0, 'rgba(59,130,246,0.10)', null);
 
     if (toggles.heat && !isShelf) {
       const heat = world.heatmap?.[y]?.[x] || 0;
@@ -424,7 +508,7 @@ export class IsoMap {
     }
 
     if (toggles.grid && !isShelf) {
-      ctx.fillStyle = 'rgba(140,160,180,0.5)';
+      ctx.fillStyle = pal.axis;
       ctx.font = `${Math.max(8, this.cell * 0.2 * scale)}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText(`${x},${y}`, center.x, center.y + 3);
@@ -455,17 +539,18 @@ export class IsoMap {
     const cosY = Math.cos(yaw);
 
     // 立方体盒（中心 (x, y, SHELF_H/2)，半尺寸 (0.5, 0.5, SHELF_H/2)）
-    this._drawBox(x, y, SHELF_H * 0.5, 0.5, 0.5, SHELF_H * 0.5, {
-      top: '#44586c',
-      topStroke: 'rgba(210,224,236,0.2)',
-      east: 'rgba(66,86,106,0.64)',
-      west: 'rgba(52,71,91,0.60)',
-      north: 'rgba(52,71,91,0.60)',
-      south: 'rgba(66,86,106,0.64)',
+    const pal = this._palette;
+    this._drawBox(x, y, SHELF_H * 0.5, 0.42, 0.42, SHELF_H * 0.5, {
+      top: pal.shelfTop,
+      topStroke: 'rgba(255,255,255,0.35)',
+      east: pal.shelfSide,
+      west: pal.shelfSideDark,
+      north: pal.shelfSideDark,
+      south: pal.shelfSide,
     });
 
     // 4 根立柱（垂直棱）
-    ctx.strokeStyle = 'rgba(15,22,30,0.9)';
+    ctx.strokeStyle = pal.post;
     ctx.lineWidth = Math.max(1, this.cell * 0.035 * scale);
     ctx.beginPath();
     for (const [px, py] of [[x - 0.5, y - 0.5], [x + 0.5, y - 0.5], [x + 0.5, y + 0.5], [x - 0.5, y + 0.5]]) {
@@ -599,14 +684,25 @@ export class IsoMap {
     const ctx = this.ctx;
     const c = this.worldToScreen(pos.x, pos.y);
     const scale = this.camera.scale;
+    const top = this._projectPx(pos.x, pos.y, 0.28);
     ctx.save();
-    ctx.globalAlpha = active ? 1 : 0.6;
-    this._tilePoly(c.x, c.y, 0.85, color + (active ? '33' : '22'), isSelected ? '#ffffff' : color);
+    ctx.globalAlpha = active ? 1 : 0.55;
+    this._tilePoly(c.x, c.y, 0.72, color + (active ? '40' : '22'), isSelected ? '#F59E0B' : color);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1.5, 2 * scale);
+    ctx.beginPath();
+    ctx.moveTo(c.x, c.y);
+    ctx.lineTo(top.x, top.y);
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(top.x, top.y, Math.max(3, 4.5 * scale), 0, Math.PI * 2);
+    ctx.fill();
     if (label) {
-      ctx.fillStyle = color;
-      ctx.font = `600 ${Math.max(9, this.cell * 0.2 * scale)}px sans-serif`;
+      ctx.fillStyle = this._palette?.label || '#172B4D';
+      ctx.font = `650 ${Math.max(10, this.cell * 0.18 * scale)}px sans-serif`;
       ctx.textAlign = 'center';
-      ctx.fillText(label, c.x, c.y + 3);
+      ctx.fillText(label, top.x, top.y - 6);
       ctx.textAlign = 'start';
     }
     ctx.restore();
@@ -614,12 +710,17 @@ export class IsoMap {
 
   // ---------- 路径 ----------
   _drawPaths(world, selected, now) {
-    for (const robot of values(world.robots)) {
+    const robots = values(world.robots).slice().sort((a, b) => {
+      const rank = (robot) => (selected?.kind === 'robot' && selected.robotId === robot.id ? 1 : 0);
+      return rank(a) - rank(b);
+    });
+    for (const robot of robots) {
       const path = robot.path || [];
       if (!path.length || robot.state === 'faulted') continue;
       const pos = this.store.displayPos(robot.id);
-      const isSelected = selected?.kind === 'robot' && selected.robotId === robot.id;
-      const color = isSelected ? '#f0b34a' : robotStatusColor(robot);
+      const isSelected = (selected?.kind === 'robot' && selected.robotId === robot.id)
+        || (selected?.kind === 'order' && robot.order_id === selected.orderId);
+      const color = robotPathColor(robot.id);
       const points = [pos, ...path].map((step) => {
         const c = this.worldToScreen(step.x, step.y);
         return { x: c.x, y: c.y };
@@ -629,8 +730,8 @@ export class IsoMap {
       ctx.lineCap = 'round';
       // 细虚线，贴地行驶（不加粗底衬，避免悬浮感）
       ctx.strokeStyle = color;
-      ctx.globalAlpha = 0.95;
-      ctx.lineWidth = Math.max(1.5, this.cell * 0.055 * this.camera.scale);
+      ctx.globalAlpha = isSelected ? 1 : 0.9;
+      ctx.lineWidth = Math.max(isSelected ? 2.4 : 1.6, this.cell * (isSelected ? 0.07 : 0.045) * this.camera.scale);
       ctx.setLineDash([Math.max(3, this.cell * 0.16 * this.camera.scale), Math.max(3, this.cell * 0.2 * this.camera.scale)]);
       ctx.lineDashOffset = -now / 80;
       this._trace(points);
@@ -700,100 +801,133 @@ export class IsoMap {
     return { dx: dxN, dy: dyN };
   }
 
-  // 3D 彩色 AGV：低多边形立方体车体 + 顶部发光面板 + 3D 方向 chevron
-  // 视角状态完全独立：仅读取机器人世界坐标，不修改任何仿真状态
+  // 地面 AGV：车体沿行驶方向拉长，高度低于货架，编号用实心底牌。
   _drawRobot(robot, now, selected) {
     const ctx = this.ctx;
     const pos = this.store.displayPos(robot.id);
     const scale = this.camera.scale;
-    const status = robotStatusColor(robot);   // 状态基色（青/琥珀/红/灰）
+    const status = robotStatusColor(robot);
     const isSelected = selected?.kind === 'robot' && selected.robotId === robot.id;
     const { dx, dy } = this._robotHeadingVec(robot, pos);
+    const pal = this._palette;
+    const ground = this.worldToScreen(pos.x, pos.y);
 
-    // 颜色派生：顶面更亮（霓虹感），侧面更暗（体积感）
-    const top = brighten(status, 0.38);
-    const side = darken(status, 0.42);
-    const sideDark = darken(status, 0.56);
-    const panelTop = brighten(status, 0.62);
+    ctx.fillStyle = pal.shadow;
+    ctx.beginPath();
+    ctx.ellipse(ground.x, ground.y + 3, this.cell * 0.26 * scale, this.cell * 0.11 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
 
-    // 1. 选中地面环（选中机器人高亮）
     if (isSelected) {
-      const c = this.worldToScreen(pos.x, pos.y);
-      ctx.strokeStyle = 'rgba(240,179,74,0.7)';
-      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = '#F59E0B';
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.ellipse(c.x, c.y, this.cell * 0.46 * scale, this.cell * 0.22 * scale, 0, 0, Math.PI * 2);
+      ctx.ellipse(ground.x, ground.y, this.cell * 0.4 * scale, this.cell * 0.16 * scale, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
 
-    // 2. 主车体：3D 立方体（半宽 0.24 cell，半高 0.10 cell，中心在 z=0.10）
-    const BODY_S = 0.24;   // sx = sy（接近正方形，方向由 chevron 表示）
-    const BODY_H = 0.10;   // sz
-    this._drawBox(pos.x, pos.y, BODY_H, BODY_S, BODY_S, BODY_H, {
-      top,
-      topStroke: status,
-      east: side,
-      west: sideDark,
-      north: side,
-      south: sideDark,
-    });
-
-    // 3. 顶部发光面板（略小、更亮，营造 LED 顶面）
-    const PANEL_Z = BODY_H * 2 + 0.014;       // 紧贴车体顶部
-    const PANEL_S = BODY_S * 0.78;
-    this._drawBox(pos.x, pos.y, PANEL_Z, PANEL_S, PANEL_S, 0.014, {
-      top: panelTop,
-      topStroke: brighten(status, 0.78),
-      east: brighten(status, 0.18),
-      west: brighten(status, 0.06),
-      north: brighten(status, 0.18),
-      south: brighten(status, 0.06),
-    });
-
-    // 4. 方向 chevron：3D 世界空间三角形，朝 heading 方向投影后绘制
-    //    前点位于车头外缘，两点位于车尾两侧
-    const CHEV_Z = PANEL_Z + 0.014;
-    const fwd = BODY_S + 0.04;        // 前点到中心距离
-    const back = BODY_S - 0.04;       // 后点到中心距离
-    const halfW = BODY_S * 0.62;      // 后点横向半宽
-    // 世界空间旋转：把 (1,0) 映射为，(0,1) 映射为 (-dy, dx)
-    const p1 = this._projectPx(pos.x + dx * fwd, pos.y + dy * fwd, CHEV_Z);
-    const p2 = this._projectPx(pos.x - dx * back - dy * halfW, pos.y - dy * back + dx * halfW, CHEV_Z);
-    const p3 = this._projectPx(pos.x - dx * back + dy * halfW, pos.y - dy * back - dx * halfW, CHEV_Z);
-    ctx.fillStyle = brighten(status, 0.78);
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-    ctx.lineWidth = 0.8;
+    const length = 0.46;
+    const width = 0.3;
+    const bodyH = 0.16;
+    const hx = dx * (length / 2);
+    const hy = dy * (length / 2);
+    const px = -dy * (width / 2);
+    const py = dx * (width / 2);
+    const z0 = 0.03;
+    const z1 = z0 + bodyH;
+    const at = (ox, oy, z) => this._projectPx(pos.x + ox, pos.y + oy, z);
+    const ring = (z) => [
+      at(-hx - px, -hy - py, z),
+      at(hx - px, hy - py, z),
+      at(hx + px, hy + py, z),
+      at(-hx + px, -hy + py, z),
+    ];
+    const bottom = ring(z0);
+    const top = ring(z1);
+    const face = (pts, color) => {
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i += 1) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+    };
+    const sides = [
+      { pts: [bottom[0], bottom[1], top[1], top[0]], color: darken(status, 0.28), depth: bottom[0].depth },
+      { pts: [bottom[1], bottom[2], top[2], top[1]], color: brighten(status, 0.08), depth: bottom[1].depth },
+      { pts: [bottom[2], bottom[3], top[3], top[2]], color: darken(status, 0.42), depth: bottom[2].depth },
+      { pts: [bottom[3], bottom[0], top[0], top[3]], color: darken(status, 0.36), depth: bottom[3].depth },
+    ];
+    sides.sort((a, b) => b.depth - a.depth);
+    for (const side of sides) face(side.pts, side.color);
+    face(top, brighten(status, 0.28));
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
-    ctx.lineTo(p3.x, p3.y);
+    ctx.moveTo(top[0].x, top[0].y);
+    for (let i = 1; i < 4; i += 1) ctx.lineTo(top[i].x, top[i].y);
     ctx.closePath();
-    ctx.fill();
     ctx.stroke();
 
-    // 5. 载货：送货途中顶部小货箱（暖色调，表示已取货）
+    const tip = at(dx * 0.16, dy * 0.16, z1 + 0.02);
+    const left = at(-dx * 0.08 - dy * 0.09, -dy * 0.08 + dx * 0.09, z1 + 0.02);
+    const right = at(-dx * 0.08 + dy * 0.09, -dy * 0.08 - dx * 0.09, z1 + 0.02);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(tip.x, tip.y);
+    ctx.lineTo(left.x, left.y);
+    ctx.lineTo(right.x, right.y);
+    ctx.closePath();
+    ctx.fill();
+
     if (robot.state === 'to_dropoff') {
-      const CRATE_Z = CHEV_Z + 0.04;
-      this._drawBox(pos.x - dx * 0.06, pos.y - dy * 0.06, CRATE_Z + 0.05, 0.11, 0.11, 0.05, {
-        top: '#e5d3a6',
-        topStroke: '#c9b480',
-        east: '#c9b480',
-        west: '#a89060',
-        north: '#c9b480',
-        south: '#a89060',
+      this._drawBox(pos.x - dx * 0.02, pos.y - dy * 0.02, z1 + 0.07, 0.1, 0.1, 0.05, {
+        top: '#E7D3A1',
+        topStroke: '#C4A46A',
+        east: '#C4A46A',
+        west: '#A68448',
+        north: '#C4A46A',
+        south: '#A68448',
       });
     }
 
-    // 6. 标签悬浮于机器人正上方（不参与旋转）
-    const labelP = this._projectPx(pos.x, pos.y, PANEL_Z + 0.06);
-    ctx.fillStyle = '#eef5ff';
-    ctx.font = `700 ${Math.max(8, this.cell * 0.17 * scale)}px sans-serif`;
+    const labelAt = at(0, 0, z1 + 0.28);
+    const text = `R${robot.id}`;
+    ctx.font = `700 ${Math.max(12, this.cell * 0.2 * scale)}px "Segoe UI", "Microsoft YaHei", sans-serif`;
+    const textWidth = ctx.measureText(text).width;
+    const boxW = textWidth + 10;
+    const boxH = Math.max(16, this.cell * 0.24 * scale);
+    const boxX = labelAt.x - boxW / 2;
+    const boxY = labelAt.y - boxH;
+    ctx.fillStyle = pal.labelBg;
+    ctx.strokeStyle = isSelected ? '#F59E0B' : pal.labelStroke;
+    ctx.lineWidth = 1;
+    this._rrect(ctx, boxX, boxY, boxW, boxH, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = status;
+    ctx.beginPath();
+    ctx.arc(boxX + 7, boxY + boxH / 2, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = pal.label;
     ctx.textAlign = 'center';
-    ctx.shadowColor = 'rgba(0,0,0,0.7)';
-    ctx.shadowBlur = 3;
-    ctx.fillText(`R${robot.id}`, labelP.x, labelP.y);
-    ctx.shadowBlur = 0;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, labelAt.x + 4, boxY + boxH / 2 + 0.5);
     ctx.textAlign = 'start';
+    ctx.textBaseline = 'alphabetic';
+    void now;
+  }
+
+  _drawAxis(rect) {
+    const map = this.store.world?.map;
+    if (!map) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = this._palette.axis;
+    ctx.font = '12px "Segoe UI", "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(`原点左上 · x 向右 · y 向下 · ${map.width} × ${map.height}`, 12, rect.height - 14);
+    ctx.restore();
   }
 
   _rrect(ctx, x, y, w, h, r) {
@@ -811,5 +945,44 @@ export class IsoMap {
   _drawHover(cell) {
     const c = this.worldToScreen(cell.x, cell.y);
     this._tilePoly(c.x, c.y, 1.0, 'rgba(44,198,176,0.1)', 'rgba(44,198,176,0.5)');
+  }
+
+  _drawOrderPreview() {
+    const draft = this.store.orderDraft;
+    if (!draft) return;
+    const paint = (cell, fill, stroke, label) => {
+      const c = this.worldToScreen(cell.x, cell.y);
+      this._tilePoly(c.x, c.y, 1.0, fill, stroke);
+      this.ctx.save();
+      this.ctx.fillStyle = stroke;
+      this.ctx.font = '12px "Segoe UI", "Microsoft YaHei", sans-serif';
+      this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'bottom';
+      this.ctx.fillText(label, c.x, c.y - 10);
+      this.ctx.restore();
+    };
+    if (draft.pickup) paint(draft.pickup, 'rgba(22,163,74,0.28)', '#15803d', '取');
+    if (draft.dropoff) paint(draft.dropoff, 'rgba(37,99,235,0.28)', '#1d4ed8', '送');
+  }
+
+  _drawSegmentPreview() {
+    const pick = this.store.segmentPick;
+    if (!pick) return;
+    const paint = (cell, fill, stroke) => {
+      const c = this.worldToScreen(cell.x, cell.y);
+      this._tilePoly(c.x, c.y, 1.0, fill, stroke);
+    };
+    if (pick.start) paint(pick.start, 'rgba(245,158,11,0.28)', 'rgba(217,119,6,0.95)');
+    if (!pick.start || !this.hover) return;
+    if (this.hover.x !== pick.start.x && this.hover.y !== pick.start.y) return;
+    const x0 = Math.min(pick.start.x, this.hover.x);
+    const x1 = Math.max(pick.start.x, this.hover.x);
+    const y0 = Math.min(pick.start.y, this.hover.y);
+    const y1 = Math.max(pick.start.y, this.hover.y);
+    for (let x = x0; x <= x1; x += 1) {
+      for (let y = y0; y <= y1; y += 1) {
+        paint({ x, y }, 'rgba(245,158,11,0.22)', 'rgba(217,119,6,0.75)');
+      }
+    }
   }
 }

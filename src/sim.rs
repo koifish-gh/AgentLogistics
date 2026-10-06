@@ -1,8 +1,8 @@
 use crate::{map::Warehouse, model::*, planner::astar};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Simulation {
     pub map: Warehouse,
     pub robots: BTreeMap<u32, Robot>,
@@ -417,13 +417,16 @@ impl Simulation {
                     self.robots.get_mut(&rid).unwrap().busy_ticks += 1;
                 }
                 self.service(rid);
-                if self.robots[&rid].order_id.is_some()
-                    && (self.robots[&rid].path.is_empty()
-                        || self.robots[&rid].consecutive_waits >= 3)
-                {
+                let path_empty = self.robots[&rid].path.is_empty();
+                let ahead_blocked = self.robots[&rid]
+                    .path
+                    .front()
+                    .is_some_and(|cell| !self.map.walkable(*cell));
+                if self.robots[&rid].order_id.is_some() && (path_empty || ahead_blocked) {
                     let _ = self.replan(rid, &BTreeSet::new());
                 }
             }
+            self.yield_head_on();
             // Conservative synchronous reservation: all starting cells are reserved
             // for this tick, prohibiting vertex collisions, head-on swaps and following.
             let occupied: BTreeSet<_> = self.robots.values().map(|r| r.position).collect();
@@ -473,6 +476,118 @@ impl Simulation {
         }
         Ok(())
     }
+
+    fn yield_head_on(&mut self) {
+        let snapshot: Vec<_> = self
+            .robots
+            .values()
+            .filter(|robot| {
+                matches!(robot.state, RobotState::ToPickup | RobotState::ToDropoff)
+                    && !robot.path.is_empty()
+            })
+            .map(|robot| {
+                (
+                    robot.id,
+                    robot.position,
+                    robot.path.front().copied().unwrap(),
+                    robot.path.len(),
+                )
+            })
+            .collect();
+        let mut yielders = BTreeMap::new();
+        for &(id, pos, next, len) in &snapshot {
+            let Some(&(other_id, other_pos, other_next, other_len)) = snapshot
+                .iter()
+                .find(|item| item.0 != id && item.1 == next)
+            else {
+                continue;
+            };
+            let dx = next.x as i32 - pos.x as i32;
+            let dy = next.y as i32 - pos.y as i32;
+            let odx = other_next.x as i32 - other_pos.x as i32;
+            let ody = other_next.y as i32 - other_pos.y as i32;
+            let mutual = other_next == pos;
+            let opposite = dx == -odx && dy == -ody && (dx != 0 || dy != 0);
+            if !mutual && !opposite {
+                continue;
+            }
+            if len > other_len || (len == other_len && id > other_id) {
+                yielders.insert(id, next);
+            } else {
+                yielders.insert(other_id, other_next);
+            }
+        }
+        for (id, avoid) in yielders {
+            let _ = self.replan(id, &BTreeSet::from([avoid]));
+        }
+    }
+
+    pub fn validate_snapshot(&self) -> Result<(), String> {
+        self.map.validate()?;
+        let width = self.map.width as usize;
+        let height = self.map.height as usize;
+        if self.heatmap.len() != height || self.heatmap.iter().any(|row| row.len() != width) {
+            return Err("heatmap does not match the map".into());
+        }
+        if self.robots.is_empty() || self.robots.len() > 64 {
+            return Err("robot count must be in 1..=64".into());
+        }
+        let mut seen = BTreeSet::new();
+        for (id, robot) in &self.robots {
+            if robot.id != *id {
+                return Err("robot id does not match its key".into());
+            }
+            if !self.map.walkable(robot.position) || !seen.insert(robot.position) {
+                return Err("robot positions must be distinct walkable cells".into());
+            }
+            if robot.path.iter().any(|cell| !self.map.contains(*cell)) {
+                return Err("robot path leaves the map".into());
+            }
+            if let Some(order_id) = robot.order_id {
+                if !self.orders.contains_key(&order_id) {
+                    return Err("robot points at a missing order".into());
+                }
+            }
+        }
+        let mut max_order = 0u32;
+        for (id, order) in &self.orders {
+            if order.id != *id {
+                return Err("order id does not match its key".into());
+            }
+            max_order = max_order.max(*id);
+            if order.priority > 9 {
+                return Err("priority must be in 0..=9".into());
+            }
+            for cell in [order.pickup, order.dropoff] {
+                if !self.map.contains(cell) {
+                    return Err("order endpoint outside map".into());
+                }
+            }
+            if let Some(cell) = order.recovery_from {
+                if !self.map.contains(cell) {
+                    return Err("recovery cell outside map".into());
+                }
+            }
+            if let Some(robot_id) = order.robot_id {
+                if !self.robots.contains_key(&robot_id) {
+                    return Err("order points at a missing robot".into());
+                }
+            }
+        }
+        if self.orders.len() > 10000 {
+            return Err("order limit reached (10000)".into());
+        }
+        if self.next_order <= max_order {
+            return Err("next order id collides with an existing order".into());
+        }
+        for (index, event) in self.events.iter().enumerate() {
+            if event.sequence != index as u64 + 1 {
+                return Err("event sequence is not contiguous".into());
+            }
+        }
+        Ok(())
+    }
+
     pub fn kpis(&self) -> Kpis {
         let completed: Vec<_> = self
             .orders

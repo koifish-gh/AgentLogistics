@@ -1,6 +1,9 @@
 /target/
+/target-restore/
 /.tools/
 /output/
 __pycache__/
 
 .env
+/agent/session.json
+/agent/session.json.tmp

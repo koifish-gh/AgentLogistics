@@ -84,6 +84,33 @@ function safePositiveInt(value, fallback) {
   return Number.isSafeInteger(number) && number > 0 ? number : fallback;
 }
 
+const sessionPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'session.json');
+const READ_ONLY_OPS = new Set(['get_state', 'get_kpis', 'get_events', 'plan_path']);
+
+function loadSession() {
+  try {
+    const data = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+    if (!data?.world?.map || !data.world.robots) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+async function persistSession() {
+  const state = await brain.client.call('get_state');
+  const payload = {
+    world: state.world,
+    trace: brain.trace,
+    handledFaults: [...brain.handledFaults],
+    eventAfter: brain.eventAfter,
+  };
+  const tmp = `${sessionPath}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(payload));
+  fs.rmSync(sessionPath, { force: true });
+  fs.renameSync(tmp, sessionPath);
+}
+
 const brain = new AgentBrain({ mode: CONFIG.mode });
 let ready = null;
 
@@ -91,7 +118,20 @@ function ensureReady() {
   if (!ready) {
     ready = brain
       .start()
-      .then(() => brain.reset())
+      .then(async () => {
+        const saved = loadSession();
+        if (!saved) {
+          await brain.reset();
+          return;
+        }
+        try {
+          await brain.restore(saved);
+          console.log(`Restored simulation at tick ${saved.world.tick}`);
+        } catch (error) {
+          console.warn(`Snapshot restore failed, starting fresh: ${error.message}`);
+          await brain.reset();
+        }
+      })
       .catch((error) => {
         ready = null;
         throw error;
@@ -164,7 +204,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/agent/reset') {
       const body = await readJson(req);
       const result = await serialized(() =>
-        ensureReady().then(() => brain.reset(body)),
+        ensureReady().then(async () => {
+          const reset = await brain.reset(body);
+          await persistSession();
+          return reset;
+        }),
       );
       return send(res, 200, result);
     }
@@ -172,11 +216,15 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/agent/decide') {
       const body = await readJson(req);
       const result = await serialized(() =>
-        ensureReady().then(() =>
-          brain.runTurn({
+        ensureReady().then(async () => {
+          const turn = await brain.runTurn({
             ticks: safePositiveInt(body.ticks, brain.ticksPerTurn),
-          }),
-        ),
+            fast: true,
+            surge: body.surge === true,
+          });
+          await persistSession();
+          return turn;
+        }),
       );
       return send(res, 200, result);
     }
@@ -184,12 +232,14 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/agent/run') {
       const body = await readJson(req);
       const result = await serialized(() =>
-        ensureReady().then(() =>
-          brain.run({
+        ensureReady().then(async () => {
+          const runs = await brain.run({
             turns: safePositiveInt(body.turns, 1),
             ticks: safePositiveInt(body.ticks, brain.ticksPerTurn),
-          }),
-        ),
+          });
+          await persistSession();
+          return runs;
+        }),
       );
       return send(res, 200, {
         runs: result.length,
@@ -201,7 +251,11 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req);
       const { op, args, ...rest } = body;
       const result = await serialized(() =>
-        ensureReady().then(() => brain.client.call(op, args || rest)),
+        ensureReady().then(async () => {
+          const command = await brain.client.call(op, args || rest);
+          if (!READ_ONLY_OPS.has(op)) await persistSession();
+          return command;
+        }),
       );
       return send(res, 200, result);
     }
@@ -215,7 +269,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.requestTimeout = 30000;
+server.requestTimeout = 0;
 server.listen(CONFIG.port, '127.0.0.1', () => {
   console.log(`Agent UI:  http://127.0.0.1:${CONFIG.port}/`);
   console.log(`Agent API: http://127.0.0.1:${CONFIG.port}`);

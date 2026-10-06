@@ -1,5 +1,5 @@
 // Mock / 派生数据层
-// 后端未提供的数据（电量、历史利用率、Agent 结构化决策、策略对比、
+// 后端未提供的数据（历史利用率、Agent 结构化决策、策略对比、
 // 拥堵/故障区域等）统一在此生成，UI 不直接硬编码。
 // 未来后端补齐后，仅替换此模块为真实数据源即可。
 
@@ -97,13 +97,35 @@ export function mockSnapshot(tick = 0) {
     heatmap.push(row);
   }
 
-  const completed = Math.floor(tick / 15);
-  const events = [
-    { sequence: 1, tick: Math.max(0, tick - 12), kind: 'order_created', robot_id: null, order_id: 8, detail: '创建订单 #8' },
-    { sequence: 2, tick: Math.max(0, tick - 9), kind: 'order_assigned', robot_id: 1, order_id: 8, detail: 'R1 接收订单' },
-    { sequence: 3, tick: Math.max(0, tick - 6), kind: 'robot_waiting', robot_id: 2, order_id: null, detail: 'A 通道等待绕行' },
-    { sequence: 4, tick: Math.max(0, tick - 3), kind: 'order_completed', robot_id: 1, order_id: 7, detail: '完成订单 #7' },
-  ];
+  const totalOrders = Object.keys(orders).length;
+  const completed = Math.min(totalOrders, Math.floor(tick / 15));
+  for (const order of Object.values(orders)) {
+    const done = order.id <= completed;
+    order.state = done ? 'completed' : order.id === completed + 1 ? 'in_transit' : order.id === completed + 2 ? 'assigned' : 'pending';
+    order.robot_id = done || order.state === 'in_transit' || order.state === 'assigned' ? ((order.id - 1) % 5) + 1 : null;
+    order.completed_at = done ? Math.max(order.created_at, tick - order.id) : null;
+    if (order.robot_id && robots[order.robot_id]?.state === 'faulted') {
+      order.state = 'pending';
+      order.robot_id = null;
+      order.completed_at = null;
+    }
+  }
+  const pending = Object.values(orders).filter((order) => order.state === 'pending').length;
+  const active = Object.values(orders).filter((order) => order.state === 'assigned' || order.state === 'in_transit').length;
+  const events = [];
+  let sequence = 1;
+  for (const order of Object.values(orders)) {
+    events.push({ sequence: sequence++, tick: order.created_at, kind: 'order_created', robot_id: null, order_id: order.id, detail: `创建订单 #${order.id}` });
+    if (order.state === 'assigned' || order.state === 'in_transit' || order.state === 'completed') {
+      events.push({ sequence: sequence++, tick: order.created_at, kind: 'order_assigned', robot_id: order.robot_id, order_id: order.id, detail: `R${order.robot_id} 接收订单` });
+    }
+    if (order.state === 'in_transit' || order.state === 'completed') {
+      events.push({ sequence: sequence++, tick: Math.max(order.created_at, tick), kind: 'order_picked_up', robot_id: order.robot_id, order_id: order.id, detail: `完成取货 #${order.id}` });
+    }
+    if (order.state === 'completed') {
+      events.push({ sequence: sequence++, tick: order.completed_at ?? tick, kind: 'order_completed', robot_id: order.robot_id, order_id: order.id, detail: `完成订单 #${order.id}` });
+    }
+  }
 
   const world = {
     tick,
@@ -115,13 +137,12 @@ export function mockSnapshot(tick = 0) {
     heatmap,
   };
 
-  const total = Object.keys(orders).length;
   const kpis = {
     tick,
-    total_orders: total,
+    total_orders: totalOrders,
     completed_orders: completed,
-    pending_orders: total - completed - 3,
-    active_orders: 3,
+    pending_orders: pending,
+    active_orders: active,
     faulted_robots: robots[3]?.state === 'faulted' ? 1 : 0,
     throughput_per_100_ticks: tick > 0 ? (completed / tick) * 100 : 0,
     average_completion_ticks: completed > 0 ? 32 + (tick % 10) / 10 : 0,
@@ -133,14 +154,13 @@ export function mockSnapshot(tick = 0) {
   return { world, kpis };
 }
 
-// 机器人扩展指标（后端未提供）：电量 / 利用率 / 平均任务时间 / 历史曲线
+// 机器人扩展指标（后端未提供）：利用率 / 平均任务时间 / 历史曲线
 export function mockRobotExtras(robots, tick) {
   const extras = {};
   for (const robot of Object.values(robots)) {
     const rnd = seeded(robot.id * 53 + 7);
     const history = Array.from({ length: 24 }, (_, i) => 0.4 + 0.5 * Math.abs(Math.sin(i / 5 + robot.id + tick / 20)) + rnd() * 0.08);
     extras[robot.id] = {
-      battery: Math.max(8, Math.round((100 - (tick * 0.4 + robot.id * 9)) % 100)),
       utilization: 0.55 + 0.4 * Math.abs(Math.sin(robot.id + tick / 30)),
       avgTaskTime: 26 + (robot.id % 5) * 4,
       history,

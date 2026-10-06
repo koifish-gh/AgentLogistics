@@ -24,7 +24,13 @@ export function formatNum(value, digits = 2) {
 }
 
 export function percent(value) {
-  return `${formatNum((value || 0) * 100, 1)}%`;
+  if (value == null || Number.isNaN(Number(value))) return '暂无数据';
+  return `${formatNum(Number(value) * 100, 1)}%`;
+}
+
+export function formatMetric(value, digits = 1) {
+  if (value == null || !Number.isFinite(Number(value))) return '—';
+  return formatNum(value, digits);
 }
 
 export function clamp(v, min, max) {
@@ -35,6 +41,8 @@ export function clamp(v, min, max) {
 const ICONS = {
   dashboard: '<path d="M3 3h7v7H3zM14 3h7v4h-7zM14 11h7v10h-7zM3 14h7v7H3z"/>',
   robot: '<rect x="4" y="7" width="16" height="11" rx="2"/><circle cx="12" cy="12" r="2.2"/><path d="M8 7V5M16 7V5"/><path d="M12 18v2M6 18h2M16 18h2"/>',
+  robots: '<rect x="4" y="7" width="16" height="11" rx="2"/><circle cx="12" cy="12" r="2.2"/><path d="M8 7V5M16 7V5"/><path d="M12 18v2M6 18h2M16 18h2"/>',
+  agent: '<rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/>',
   orders: '<path d="M6 3h12v18l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2L6 21zM9 8h6M9 12h6"/>',
   analytics: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"/>',
@@ -55,9 +63,10 @@ const ICONS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/>',
   chevron: '<path d="M9 6l6 6-6 6"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/>',
   layers: '<path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/>',
   cpu: '<rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/>',
-  battery: '<rect x="3" y="7" width="16" height="10" rx="2"/><path d="M21 10v4"/><rect x="5" y="9" width="10" height="6" rx="1"/>',
 };
 
 export function icon(name, size = 16) {

@@ -46,7 +46,7 @@ export function compactWorld(world) {
     map: {
       width: world.map.width,
       height: world.map.height,
-      obstacles: world.map.obstacles,
+      obstacle_count: world.map.obstacles?.length || 0,
       blocked: world.map.blocked,
     },
     robots: Object.values(world.robots).map(compactRobot),

@@ -1,88 +1,99 @@
-# AgentLogistics — B 同学：仿真与算法
+# AgentLogistics
 
-根据文件夹内《AgentLogistics 智能仓储机器人调度.pdf》和四人分工实现。原始 PDF 未修改。
-本目录包含 **Rust 仿真核心、A*、调度基线、故障与重规划、Agent 工具接口、前端接入桥和测试**。
-LLM 决策逻辑、正式前端页面和 PPT 分别由 A、C、D 同学负责。
+智能仓储机器人调度与仿真。多台机器人在同一张网格仓库里取货、送货；仿真负责路径、碰撞和订单状态，Agent 只在故障、通道对向和订单突发时调用大模型。平时按规则分配，不逐步询问模型。
 
-## A 同学：Agent 大脑
+默认演示是 **24×16** 地图、**5 组双深货架**、**5 台机器人**。界面标语是「感知仓库 · 理解任务 · 智能决策 · 协同执行」。
 
-Agent 大脑位于 `agent/`，包含 LLM Function Calling、Prompt、AgentLoop、工具调用、事件记忆和安全降级。运行方式与 C 同学前端接口见 `agent/README.md`。
+## 启动演示
 
-## 快速运行（Windows / PowerShell）
-
-请从 `D:\sw_huibian` 运行。当前环境已经准备好本目录内的 Rust 工具链、依赖缓存及 debug 可执行程序。
+需要 Rust 与 Node.js。在仓库根目录：
 
 ```powershell
-# 无需重新编译即可演示；默认 seed=42，20 个订单，包含故障/修复
-.\target\debug\logistics.exe --demo
+cargo build --locked
+cd agent
+copy .env.example .env
+npm run server
+```
 
-# 测试 / 编译，使用项目内工具链及缓存
-.\scripts\dev.ps1 test --offline
-.\scripts\dev.ps1 build --offline
+浏览器打开 <http://127.0.0.1:8788/>。
 
-# 按行处理命令，记录后可确定性回放
+`.env` 中的 `OPENAI_API_KEY` 留空时，服务以规则模式运行，三类事件也不调用模型。填入兼容 OpenAI 接口的密钥后，仅上述三类事件会请求模型；超时或没有有效动作时，自动退回本地规则。不要把密钥提交到仓库。
+
+演示运行时策略为 `manual`，避免仿真自带派单和 Agent 同时分配。日常订单由 Agent 内的规则处理，代价为：
+
+**到目标的格数 + 已完成单数 × 4**
+
+界面上的「立即派单」在该策略下不生效。指定某一台机器人，使用订单页的手动分配。
+
+## 系统组成
+
+| 部分 | 位置 | 作用 |
+| --- | --- | --- |
+| 仿真内核 | `src/` | 地图、A*、订单、碰撞、故障、指标、命令回放 |
+| Agent | `agent/` | 判断是否询问模型，调用工具，向前端提供 HTTP |
+| 界面 | `web/` | 总览、机器人、订单、决策、分析、设置 |
+
+浏览器不直接改仓库。操作发到 Agent，Agent 通过 JSON Lines 驱动 `target/debug/logistics.exe`，再把新的世界快照画回页面。
+
+网页上的一步分三种：
+
+- 没有新故障、没有对向、也没有空闲车加待分配订单：只推进一格。
+- 普通待分配：本地规则派单，不调用模型。
+- 故障、通道对向，或界面注入的订单突发：分别由异常 Agent、路径 Agent、派单 Agent 询问模型。
+
+故障机器人保持停机，需手动修复。对向时只重规划剩余路程更长的那一台。订单突发必须在总览的场景事件里注入，待处理订单变多本身不会触发模型。
+
+刷新页面会保留本次显示。Agent 进程重启后，从 `agent/session.json` 接上上次仿真世界。该文件不进入版本库。
+
+`scripts/server.mjs` 是只连接仿真、不带 Agent 和正式页面的旧接口，默认端口 8787。演示请使用上面的 8788。
+
+## 界面
+
+- **总览**：数字孪生、运行指标、仿真控制和场景事件。
+- **机器人管理**：每台机器人的状态、任务、坐标和路径。不显示电量。
+- **订单调度**：查询、手动分配，以及在地图上选择取货点和送货点创建订单。
+- **Agent 决策**：候选代价、决策说明和记录。
+- **数据分析**：本次仿真的完成情况、利用率和停留热力图。
+- **系统设置**：种子、策略、速度和显示。应用仿真参数会重置世界。
+
+可注入的场景：机器人故障、修复故障、单点封锁、路段封锁、道路恢复、订单突发。
+
+## 仿真命令行
+
+只运行 Rust 内核时，在仓库根目录：
+
+```powershell
+cargo run -- --demo
+cargo test --locked
+```
+
+命令文件可录制并在同一版本下回放：
+
+```powershell
 Get-Content -Encoding utf8 .\examples\scenario.jsonl |
     .\target\debug\logistics.exe --record scenario.replay.json
 .\target\debug\logistics.exe --replay scenario.replay.json
-
-# 可选：C 同学 HTTP/SSE 接入，需要 Node.js（测试使用 Node 24）
-node .\scripts\server.mjs
-# http://127.0.0.1:8787/api/state
 ```
 
-其他机器安装 Rust（本项目验证版本为 1.98.1）后可直接 `cargo test --locked`、`cargo run -- --demo`。
-Windows GNU 工具链需要可用的 MinGW 链接器；本机使用现有 `D:\mingw64\bin\gcc.exe`。
-`.tools/` 是本机工具与缓存，不纳入版本管理。`Cargo.lock` 应提交，以固定依赖版本。
-`dev.ps1` 的 `run`、`fmt`、`clippy` 后参数分别转交程序、格式器、静态检查器，例如：
+无界面地跑规则模式：
 
 ```powershell
-.\scripts\dev.ps1 run --demo
-.\scripts\dev.ps1 fmt --check
-.\scripts\dev.ps1 clippy
+cd agent
+npm run demo
 ```
 
-## 已实现
+## 目录
 
-| 部分 | 行为 |
-| --- | --- |
-| 仓库 | 可配置网格、固定货架障碍、动态封锁、12×8 默认地图 |
-| 机器人 | idle → to_pickup → to_dropoff → idle；faulted 独立状态 |
-| 订单 | 优先级 0–9；pending → assigned → in_transit → completed |
-| 路径 | 四邻接、单位距离 A*、曼哈顿启发、稳定的平局处理 |
-| 派单 | nearest 最近优先、balanced 历史工作量均衡、manual Agent 接管 |
-| 安全移动 | 同步时间步、格点预留；禁止重叠、迎面交换及同一时间步跟车进入 |
-| 异常 | 机器人故障、修复、通道封锁/解除、主动重规划、等待事件 |
-| 可观测性 | 完整状态、递增事件序号、占用热力图、吞吐/耗时/利用率/距离/等待 KPI |
-| 回放 | 固定随机种子、命令记录、同版本确定性重放 |
-| 接口 | Rust library、持久 JSON Lines 子进程、可选 HTTP/SSE 桥 |
+- `src/`：仿真实现。`planner.rs` 为 A*，`sim.rs` 为时间步与调度，`tools.rs` 为 JSON 命令。
+- `agent/`：决策循环、模型调用和 8788 服务。细节见 `agent/README.md`。
+- `web/`：浏览器界面。
+- `docs/API.md`：仿真命令协议。
+- `docs/B_HANDOFF.md`：时间步、碰撞、故障接运和测试约定。
+- `schemas/command.schema.json`：命令结构。
+- `tests/`：仿真与接口测试。
 
-## 文件导航
+汇报材料在 `docs/项目总述.md`、`docs/项目讲解.html` 和 `docs/PPT项目汇报说明.md`。早期仿真交接说明保留在 `交接文档.md`。
 
-- `src/map.rs` / `src/model.rs`：地图和领域数据结构。
-- `src/planner.rs`：A*。
-- `src/sim.rs`：仿真、调度、冲突防护、故障恢复与指标。
-- `src/tools.rs` / `src/main.rs`：工具命令、CLI、回放。
-- `docs/API.md`：A/C 对接协议、返回格式及示例。
-- `schemas/command.schema.json`：命令 JSON Schema。
-- `docs/B_HANDOFF.md`：设计约定、测试、限制及分工交接。
-- `examples/agent_client.py`：A 同学可复用的 Python 子进程调用示例。
-- `examples/scenario.jsonl`：取货后故障接运场景。
-- `scripts/server.mjs`：仅用 Node 内置模块的 HTTP/SSE 桥。
-- `tests/`：Rust 核心测试、CLI 与 HTTP/SSE 集成检查。
+## 边界
 
-## 验证
-
-Windows 可直接运行 `.\scripts\verify.ps1`，自动使用本机已有的 Node/Python（优先使用 Codex 附带运行时），执行全部检查。也可分别运行：
-
-```powershell
-.\scripts\dev.ps1 test --offline
-.\scripts\dev.ps1 clippy
-python .\tests\cli_smoke.py
-node .\tests\http_smoke.mjs
-```
-
-Python 脚本仅使用标准库。CLI 测试会将回放和指标保存到 `output/`。
-当前验证结果见 `docs/B_HANDOFF.md`。
-
-本实现是可联调的仿真基线：不模拟电量、充电、加速度和真实机械取货；单车道对向堵塞可能需要 Agent 干预。
-请先阅读交接文档中的货物接运、时间步及冲突模型约定，再进行 A/B 策略比较。
+本系统是课程演示用的网格仿真。不模拟电量、充电、加速度、车身体积和真实机械取放。调度规则是可解释基线，不是全局最优。它没有连接真实仓库。单宽通道被堵住或目的地被封锁时，机器人可能持续等待；仿真保证不相撞，不保证每一张订单最终完成。

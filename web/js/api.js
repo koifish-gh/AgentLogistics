@@ -5,6 +5,7 @@ const SIM_BASE = location.port === '8788' ? 'http://127.0.0.1:8787' : location.o
 const AGENT_BASE = location.port === '8788' ? location.origin : 'http://127.0.0.1:8788';
 
 export const backend = location.port === '8788' ? 'agent' : 'sim';
+export const endpoints = { sim: SIM_BASE, agent: AGENT_BASE };
 
 function baseUrl() {
   return backend === 'agent' ? AGENT_BASE : SIM_BASE;
@@ -64,8 +65,8 @@ export function connectStream(onSnapshot) {
   return () => source.close();
 }
 
-export function agentDecide(ticks = 1) {
-  return request('/api/agent/decide', { method: 'POST', body: JSON.stringify({ ticks }) });
+export function agentDecide(ticks = 1, extra = {}) {
+  return request('/api/agent/decide', { method: 'POST', body: JSON.stringify({ ticks, ...extra }) });
 }
 
 export function agentTrace() {

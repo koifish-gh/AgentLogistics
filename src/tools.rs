@@ -58,6 +58,9 @@ pub enum Command {
     Step {
         ticks: u32,
     },
+    Restore {
+        world: Value,
+    },
 }
 
 pub fn execute(sim: &mut Simulation, command: &Command) -> Result<Value, String> {
@@ -115,6 +118,13 @@ pub fn execute(sim: &mut Simulation, command: &Command) -> Result<Value, String>
         Command::Step { ticks } => {
             sim.step(*ticks)?;
             Ok(json!(sim.kpis()))
+        }
+        Command::Restore { world } => {
+            let loaded: Simulation = serde_json::from_value(world.clone())
+                .map_err(|error| format!("快照无法读取: {error}"))?;
+            loaded.validate_snapshot()?;
+            *sim = loaded;
+            Ok(json!({ "restored": true, "tick": sim.tick }))
         }
     }
 }

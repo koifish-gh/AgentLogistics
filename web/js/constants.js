@@ -23,25 +23,34 @@ export const EVENT_LABEL = {
   robot_waiting: '等待绕行',
 };
 
-// 状态 → 语义色：颜色表达「状态」而非「机器人编号」
+// 状态 → 语义色。绿色=运行/完成，蓝色=信息，橙色=等待，红色=故障。
 export const STATE_COLOR = {
-  idle: '#8b9aa8',
-  to_pickup: '#2cc6b0',
-  to_dropoff: '#2cc6b0',
-  faulted: '#ff6b7a',
-  pending: '#f0b34a',
-  assigned: '#2cc6b0',
-  in_transit: '#2cc6b0',
-  completed: '#7d8ea3',
+  idle: '#64748B',
+  to_pickup: '#0D9488',
+  to_dropoff: '#0D9488',
+  faulted: '#EF4444',
+  pending: '#F59E0B',
+  assigned: '#3B82F6',
+  in_transit: '#0D9488',
+  completed: '#16A34A',
 };
+
+// 路径按机器人编号区分，不与状态色混用。
+export const PATH_COLORS = ['#0D9488', '#3B82F6', '#D97706', '#7C3AED', '#DB2777', '#0284C7', '#16A34A', '#EA580C'];
+
+export function robotPathColor(id) {
+  const n = Number(id) || 1;
+  return PATH_COLORS[(n - 1) % PATH_COLORS.length];
+}
 
 // 机器人可视化状态色（含「等待」）
 export function robotStatusColor(robot) {
-  if (robot.state === 'faulted') return '#ff6b7a';
-  if (robot.state === 'idle') return '#8b9aa8';
+  if (!robot) return '#64748B';
+  if (robot.state === 'faulted') return '#EF4444';
+  if (robot.state === 'idle') return '#64748B';
   const moving = robot.state === 'to_pickup' || robot.state === 'to_dropoff';
-  if (moving && (robot.wait_ticks || 0) > 0) return '#f0b34a';
-  return '#2cc6b0';
+  if (moving && (robot.wait_ticks || 0) > 0) return '#F59E0B';
+  return '#0D9488';
 }
 
 export const EVENT_TONE = {
@@ -72,19 +81,21 @@ export const DEFAULT_ROBOTS = [
 
 // 导航与页面元数据
 export const NAV_ITEMS = [
-  { route: '/', key: 'dashboard', label: '总览', sub: '实时监控' },
-  { route: '/robots', key: 'robots', label: '机器人管理', sub: '状态与详情' },
-  { route: '/orders', key: 'orders', label: '订单调度', sub: '管理与派单' },
-  { route: '/analytics', key: 'analytics', label: '数据分析', sub: '趋势与对比' },
-  { route: '/settings', key: 'settings', label: '系统设置', sub: '参数与偏好' },
+  { route: '/', key: 'dashboard', label: '总览', sub: '仓库运行状态' },
+  { route: '/robots', key: 'robots', label: '机器人管理', sub: '状态与任务' },
+  { route: '/orders', key: 'orders', label: '订单调度', sub: '查询与分配' },
+  { route: '/agent', key: 'agent', label: 'Agent 决策', sub: '调度过程' },
+  { route: '/analytics', key: 'analytics', label: '数据分析', sub: '运行效果' },
+  { route: '/settings', key: 'settings', label: '系统设置', sub: '参数与连接' },
 ];
 
 export const PAGE_META = {
-  dashboard: { title: '总览', sub: '实时监控仓库运行状态' },
-  robots: { title: '机器人管理', sub: '机器人状态与详细指标' },
-  orders: { title: '订单调度', sub: '订单管理与调度' },
-  analytics: { title: '数据分析', sub: '系统性能趋势与策略对比' },
-  settings: { title: '系统设置', sub: '仿真参数与显示偏好' },
+  dashboard: { title: '总览', sub: '仓库运行状态与数字孪生' },
+  robots: { title: '机器人管理', sub: '每台机器人的状态、任务与路径' },
+  orders: { title: '订单调度', sub: '订单查询、进度与分配' },
+  agent: { title: 'Agent决策', sub: '候选对比、路径与决策记录' },
+  analytics: { title: '数据分析', sub: '本次运行的指标与趋势' },
+  settings: { title: '系统设置', sub: '仿真参数、地图显示与连接' },
 };
 
 // 仿真速度档位（倍率）
@@ -104,8 +115,10 @@ export const STRATEGIES = [
 
 // 可注入场景事件
 export const SCENE_EVENTS = [
-  { key: 'robot_fault', label: '机器人故障', tone: 'fault', desc: '随机机器人发生故障，需注入修复' },
-  { key: 'congestion', label: '通道拥堵', tone: 'warn', desc: '指定通道发生拥堵，触发等待绕行' },
-  { key: 'order_burst', label: '订单突发', tone: 'info', desc: '突发新增一批订单进入队列' },
-  { key: 'shelf_block', label: '货架阻塞', tone: 'warn', desc: '临时封锁一个通道格' },
+  { key: 'robot_fault', label: '机器人故障', tone: 'fault', desc: '指定一台机器人故障并停在原地，不会自动修复' },
+  { key: 'robot_repair', label: '修复故障', tone: 'info', desc: '指定一台已经故障的机器人，手动让它恢复' },
+  { key: 'point_block', label: '单点封锁', tone: 'warn', desc: '填写障碍坐标 x 和 y，只封锁这一格' },
+  { key: 'order_burst', label: '订单突发', tone: 'info', desc: '按你填的数量新增一批订单' },
+  { key: 'segment_block', label: '路段封锁', tone: 'warn', desc: '在地图上依次点击起点和终点，封锁这条路上的格子' },
+  { key: 'road_restore', label: '道路恢复', tone: 'info', desc: '从已经封锁的单点坐标和路段中选择一处恢复通行' },
 ];

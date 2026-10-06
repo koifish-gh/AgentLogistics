@@ -8,7 +8,7 @@ export class LLMClient {
     this.temperature = options.temperature ?? CONFIG.temperature;
   }
 
-  async chat({ messages, tools, toolChoice = 'auto', temperature = this.temperature }) {
+  async chat({ messages, tools, toolChoice = 'auto', temperature = this.temperature, timeoutMs = 0 }) {
     if (!this.apiKey) {
       throw new Error(
         'OPENAI_API_KEY is not set. Set it, or use AGENT_MODE=rule for the offline fallback.',
@@ -24,19 +24,36 @@ export class LLMClient {
       body.tools = tools;
       body.tool_choice = toolChoice;
     }
+    if (/glm-5/i.test(this.model)) body.reasoning_effort = 'low';
 
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    });
+    let response;
+    try {
+      response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined,
+      });
+    } catch (error) {
+      if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+        throw new Error('大模型请求超时');
+      }
+      throw error;
+    }
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`LLM request failed with ${response.status}: ${text.slice(0, 500)}`);
+      let detail = text.slice(0, 500);
+      try {
+        const parsed = JSON.parse(text);
+        detail = parsed.error?.message || parsed.message || detail;
+      } catch {
+        // Keep the raw response excerpt when the provider does not return JSON.
+      }
+      throw new Error(`大模型请求失败（${response.status}）：${detail}`);
     }
 
     const data = await response.json();

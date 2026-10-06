@@ -8,12 +8,14 @@ import { $ } from './js/util.js';
 import * as dashboard from './js/pages/dashboard.js';
 import * as robots from './js/pages/robots.js';
 import * as orders from './js/pages/orders.js';
+import * as agent from './js/pages/agent.js';
 import * as analytics from './js/pages/analytics.js';
 import * as settings from './js/pages/settings.js';
 
 register('/', dashboard);
 register('/robots', robots);
 register('/orders', orders);
+register('/agent', agent);
 register('/analytics', analytics);
 register('/settings', settings);
 
