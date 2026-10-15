@@ -1,10 +1,12 @@
 // 后端适配层：统一封装「仿真核心 :8787」与「Agent 大脑 :8788」两套接口。
 // 未来后端接口完善后，仅需在此层替换实现，UI 无需改动。
 
-const SIM_BASE = location.port === '8788' ? 'http://127.0.0.1:8787' : location.origin;
-const AGENT_BASE = location.port === '8788' ? location.origin : 'http://127.0.0.1:8788';
+// Public HTTPS and local 8788 both use the same-origin Agent API.
+// Port 8787 remains the legacy simulation-only bridge.
+export const backend = location.port === '8787' ? 'sim' : 'agent';
+const SIM_BASE = backend === 'sim' ? location.origin : 'http://127.0.0.1:8787';
+const AGENT_BASE = backend === 'agent' ? location.origin : 'http://127.0.0.1:8788';
 
-export const backend = location.port === '8788' ? 'agent' : 'sim';
 export const endpoints = { sim: SIM_BASE, agent: AGENT_BASE };
 
 function baseUrl() {

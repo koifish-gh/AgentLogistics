@@ -25,6 +25,11 @@ export class LLMClient {
       body.tool_choice = toolChoice;
     }
     if (/glm-5/i.test(this.model)) body.reasoning_effort = 'low';
+    // Non-thinking mode keeps event latency bounded and avoids reasoning-history requirements.
+    if (new URL(this.baseUrl).hostname === 'api.deepseek.com') {
+      body.thinking = { type: 'disabled' };
+      body.max_tokens = 4096;
+    }
 
     let response;
     try {

@@ -7,12 +7,15 @@ import { fileURLToPath } from 'node:url';
 import { CONFIG } from './config.mjs';
 import { AgentBrain } from './loop.mjs';
 import { SIM_TOOLS } from './tools.mjs';
+import { LLMClient } from './llm.mjs';
+import { answerQuestion, buildEvidence, validateChat } from './assistant.mjs';
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
 const mime = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
 };
 
 function serveWeb(req, res, url) {
@@ -112,6 +115,8 @@ async function persistSession() {
 }
 
 const brain = new AgentBrain({ mode: CONFIG.mode });
+const assistantModel = CONFIG.apiKey ? new LLMClient() : null;
+let assistantBusy = false;
 let ready = null;
 
 function ensureReady() {
@@ -159,10 +164,28 @@ const server = http.createServer(async (req, res) => {
 
   try {
     const host = new URL(`http://${req.headers.host || 'localhost'}`);
-    if (!isLocalHostname(host.hostname)) {
+    const publicHosts = (process.env.PUBLIC_HOSTNAMES || '').split(',').map(h => h.trim()).filter(Boolean);
+    if (!isLocalHostname(host.hostname) && !publicHosts.includes(host.hostname)) {
       return send(res, 403, { error: 'Local host required' });
     }
     const url = new URL(req.url, 'http://localhost');
+
+    if (req.method === 'POST' && url.pathname === '/api/agent/chat') {
+      const body = await readJson(req);
+      validateChat(body);
+      if (assistantBusy) return send(res, 429, { error: '助手正在回答，请稍后再试' });
+      assistantBusy = true;
+      try {
+        const evidence = await serialized(async () => {
+          await ensureReady();
+          return buildEvidence(await brain.client.call('get_state'), brain.trace);
+        });
+        // Only snapshot capture joins the mutation queue; network latency must not pause simulation.
+        return send(res, 200, await answerQuestion(body, evidence, assistantModel));
+      } finally {
+        assistantBusy = false;
+      }
+    }
 
     if (req.method === 'GET' && url.pathname === '/api/agent/tools') {
       return send(res, 200, { tools: SIM_TOOLS });

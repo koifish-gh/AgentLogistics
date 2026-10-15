@@ -39,6 +39,8 @@ export function clamp(v, min, max) {
 
 // 简单 SVG 图标（stroke 风格，currentColor）
 const ICONS = {
+  alerts: '<path d="M12 3l10 18H2zM12 10v4M12 17.5v.5"/>',
+  assistant: '<path d="M4 4h16v12H9l-5 4zM8 8h8M8 12h5"/>',
   dashboard: '<path d="M3 3h7v7H3zM14 3h7v4h-7zM14 11h7v10h-7zM3 14h7v7H3z"/>',
   robot: '<rect x="4" y="7" width="16" height="11" rx="2"/><circle cx="12" cy="12" r="2.2"/><path d="M8 7V5M16 7V5"/><path d="M12 18v2M6 18h2M16 18h2"/>',
   robots: '<rect x="4" y="7" width="16" height="11" rx="2"/><circle cx="12" cy="12" r="2.2"/><path d="M8 7V5M16 7V5"/><path d="M12 18v2M6 18h2M16 18h2"/>',

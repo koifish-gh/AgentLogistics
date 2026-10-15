@@ -11,6 +11,10 @@ import * as orders from './js/pages/orders.js';
 import * as agent from './js/pages/agent.js';
 import * as analytics from './js/pages/analytics.js';
 import * as settings from './js/pages/settings.js';
+import * as assistant from './js/pages/assistant.js';
+import * as alertsPage from './js/pages/alerts.js';
+import { startAlerts } from './js/alerts.js';
+import { initAlertBanner } from './js/components/alert-banner.js';
 
 register('/', dashboard);
 register('/robots', robots);
@@ -18,10 +22,14 @@ register('/orders', orders);
 register('/agent', agent);
 register('/analytics', analytics);
 register('/settings', settings);
+register('/assistant', assistant);
+register('/alerts', alertsPage);
 
 renderNav($('#nav'));
 renderHeader($('#headerStats'), $('#headerControls'));
 initToast();
+initAlertBanner();
+startAlerts();
 
 setBefore((path) => setActiveNav(path));
 

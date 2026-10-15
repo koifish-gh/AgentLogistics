@@ -85,11 +85,15 @@ export const NAV_ITEMS = [
   { route: '/robots', key: 'robots', label: '机器人管理', sub: '状态与任务' },
   { route: '/orders', key: 'orders', label: '订单调度', sub: '查询与分配' },
   { route: '/agent', key: 'agent', label: 'Agent 决策', sub: '调度过程' },
+  { route: '/assistant', key: 'assistant', label: '分析助手', sub: '实时问答与异常处理' },
+  { route: '/alerts', key: 'alerts', label: '告警中心', sub: '故障、预警与人工处理' },
   { route: '/analytics', key: 'analytics', label: '数据分析', sub: '运行效果' },
   { route: '/settings', key: 'settings', label: '系统设置', sub: '参数与连接' },
 ];
 
 export const PAGE_META = {
+  alerts: { title: '告警中心', sub: '及时发现异常，确认处理并跟踪恢复' },
+  assistant: { title: '分析助手', sub: '依据实时状态、事件和决策记录回答' },
   dashboard: { title: '总览', sub: '仓库运行状态与数字孪生' },
   robots: { title: '机器人管理', sub: '每台机器人的状态、任务与路径' },
   orders: { title: '订单调度', sub: '订单查询、进度与分配' },

@@ -535,6 +535,7 @@ export const store = {
     }
     const strategy = this.strategy;
     const result = await api.resetWorld({ seed: this.seed, map, robots });
+    this.notify('world-reset');
     this.applySnapshot(result, false);
     this.strategy = strategy;
     if (this.backend === 'sim') await api.command({ op: 'set_strategy', strategy });
