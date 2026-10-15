@@ -1,10 +1,12 @@
 // 后端适配层：统一封装「仿真核心 :8787」与「Agent 大脑 :8788」两套接口。
 // 未来后端接口完善后，仅需在此层替换实现，UI 无需改动。
 
-const SIM_BASE = location.port === '8788' ? 'http://127.0.0.1:8787' : location.origin;
-const AGENT_BASE = location.port === '8788' ? location.origin : 'http://127.0.0.1:8788';
+// 8788 是本机 Agent。Cloudflare 穿透后地址是 https、端口为空，页面和接口仍在同一个 Agent 上。
+const viaAgent = location.port === '8788' || (location.protocol === 'https:' && location.port === '');
+const SIM_BASE = viaAgent ? 'http://127.0.0.1:8787' : location.origin;
+const AGENT_BASE = viaAgent ? location.origin : 'http://127.0.0.1:8788';
 
-export const backend = location.port === '8788' ? 'agent' : 'sim';
+export const backend = viaAgent ? 'agent' : 'sim';
 export const endpoints = { sim: SIM_BASE, agent: AGENT_BASE };
 
 function baseUrl() {

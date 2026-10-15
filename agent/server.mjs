@@ -159,7 +159,8 @@ const server = http.createServer(async (req, res) => {
 
   try {
     const host = new URL(`http://${req.headers.host || 'localhost'}`);
-    if (!isLocalHostname(host.hostname)) {
+    const allowPublic = process.env.AGENT_PUBLIC === '1' || process.env.AGENT_PUBLIC === 'true';
+    if (!allowPublic && !isLocalHostname(host.hostname)) {
       return send(res, 403, { error: 'Local host required' });
     }
     const url = new URL(req.url, 'http://localhost');
