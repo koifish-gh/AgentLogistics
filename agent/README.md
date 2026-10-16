@@ -86,3 +86,4 @@ node server.mjs
 - `OPENAI_BASE_URL`：默认 OpenAI v1 地址，可换成兼容服务。
 - `OPENAI_MODEL`：默认 `glm-4-air`，可换 `glm-4-plus` 等。
 - `AGENT_EXPLAIN`：设为 `true` 时每轮追加中文解释，方便 C 同学展示“Agent 为什么这么做”。
+- `AGENT_PUBLIC`：设为 `1` 时允许穿透域名打开页面并操作仿真。默认只允许本机。步骤见仓库根目录 `README.md` 的「让别人通过公网打开」。

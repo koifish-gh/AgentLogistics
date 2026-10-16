@@ -47,6 +47,31 @@ npm run server
 
 `scripts/server.mjs` 是只连接仿真、不带 Agent 和正式页面的旧接口，默认端口 8787。演示请使用上面的 8788。
 
+## 让别人通过公网打开
+
+服务默认只接受本机地址。Cloudflare 等穿透域名会被拒绝，对方打不开页面。在 `agent/.env` 中设置：
+
+```text
+AGENT_PUBLIC=1
+```
+
+然后启动服务。若 PowerShell 拦截 `npm.ps1`，改用：
+
+```powershell
+cd agent
+node server.mjs
+```
+
+另开一个终端：
+
+```powershell
+cloudflared tunnel --url http://127.0.0.1:8788
+```
+
+把终端给出的 `https://….trycloudflare.com` 发给别人。穿透后的页面走 https，前端会连同一个 Agent，开始、派单和场景注入进入仿真，不会因为地址不是 8788 而变成演示数据。左侧应显示「Agent 大脑 · 已连接」。
+
+`AGENT_PUBLIC` 不是 1 时，非本机访问返回 403。穿透窗口和 Node 进程都要保持运行。别人操作的是运行服务的那台电脑上的同一份仓库。演示结束后关掉这两个窗口；不需要对外分享时，把 `AGENT_PUBLIC` 改回 `0` 并重启服务。
+
 ## 界面
 
 - **总览**：数字孪生、运行指标、仿真控制和场景事件。
